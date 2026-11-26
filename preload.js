@@ -36,17 +36,33 @@ contextBridge.exposeInMainWorld("browserAPI", {
   removeSharedPin: (pinId) =>
     ipcRenderer.invoke("remove-shared-pin", { pinId }),
 
-  // Dossiers & Favoris
+  // Dossiers & Favoris + Drag & Drop
   addFolder: (spaceId, name) =>
     ipcRenderer.invoke("add-folder", { spaceId, name }),
   renameFolder: (spaceId, folderId, name) =>
     ipcRenderer.invoke("rename-folder", { spaceId, folderId, name }),
   deleteFolder: (spaceId, folderId) =>
     ipcRenderer.invoke("delete-folder", { spaceId, folderId }),
+  reorderFolders: (spaceId, orderedFolderIds) =>
+    ipcRenderer.invoke("reorder-folders", { spaceId, orderedFolderIds }),
   addBookmark: (spaceId, folderId, bookmark) =>
     ipcRenderer.invoke("add-bookmark", { spaceId, folderId, bookmark }),
   removeBookmark: (spaceId, folderId, bookmarkId) =>
     ipcRenderer.invoke("remove-bookmark", { spaceId, folderId, bookmarkId }),
+  moveBookmark: (
+    spaceId,
+    sourceFolderId,
+    bookmarkId,
+    targetFolderId,
+    targetIndex = null,
+  ) =>
+    ipcRenderer.invoke("move-bookmark", {
+      spaceId,
+      sourceFolderId,
+      bookmarkId,
+      targetFolderId,
+      targetIndex,
+    }),
 
   // Onglets, Favoris ouverts & Contrôles de navigation
   createTab: (url, spaceId, options) =>

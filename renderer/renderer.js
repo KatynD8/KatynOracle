@@ -4,11 +4,9 @@ const foldersContainerEl = document.getElementById("folders-container");
 const pinnedGridEl = document.getElementById("pinned-grid");
 const ramMeterEl = document.getElementById("ram-meter");
 const ramMeterTextEl = document.getElementById("ram-meter-text");
-const ramProgressFillEl = document.getElementById("ram-progress-fill");
 const btnSuspendInactive = document.getElementById("btn-suspend-inactive");
-const btnQuickHome = document.getElementById("btn-quick-home");
+const btnLogoMenu = document.getElementById("btn-logo-menu");
 const btnToggleSidebarMode = document.getElementById("btn-toggle-sidebar-mode");
-const quickSearchInput = document.getElementById("quick-search-input");
 
 const btnNewTab = document.getElementById("btn-new-tab");
 const btnQuickNewTab = document.getElementById("btn-quick-new-tab");
@@ -22,17 +20,15 @@ const btnBack = document.getElementById("btn-back");
 const btnForward = document.getElementById("btn-forward");
 const btnReload = document.getElementById("btn-reload");
 
-const spaceAvatarEl = document.getElementById("space-avatar");
+const spaceIndicatorEl = document.getElementById("space-indicator");
 const currentSpaceBtn = document.getElementById("current-space-btn");
 const currentSpaceLabel = document.getElementById("current-space-label");
-const currentProfileBadge = document.getElementById("current-profile-badge");
 const spacesDropdown = document.getElementById("spaces-dropdown");
 
 const homeDashboardEl = document.getElementById("home-dashboard");
 const webViewFrameEl = document.getElementById("web-view-frame");
 const homeSearchForm = document.getElementById("home-search-form");
 const homeSearchInput = document.getElementById("home-search-input");
-const resumeCardsEl = document.getElementById("resume-cards");
 
 // Menu contextuel
 const contextMenuEl = document.getElementById("context-menu");
@@ -58,6 +54,25 @@ const btnInputCancelSecondary = document.getElementById(
 );
 
 let resolveInputModal = null;
+
+// État Drag & Drop
+let draggedFolderId = null;
+let draggedBookmark = null; // { folderId, bookmarkId }
+
+function clearDragIndicators() {
+  document
+    .querySelectorAll(
+      ".is-dragging, .drag-over-folder, .drag-over-top, .drag-over-bottom",
+    )
+    .forEach((el) => {
+      el.classList.remove(
+        "is-dragging",
+        "drag-over-folder",
+        "drag-over-top",
+        "drag-over-bottom",
+      );
+    });
+}
 
 function askUserInput({
   title = "Saisie",
@@ -160,6 +175,26 @@ const extensionsConfigListEl = document.getElementById(
   "extensions-config-list",
 );
 
+// Interrupteur natif bloqueur pubs/traceurs injecté dans l'onglet Général
+let settingBlockTrackersEl = document.getElementById("setting-block-trackers");
+if (!settingBlockTrackersEl && btnSaveGeneral && btnSaveGeneral.parentElement) {
+  const wrap = document.createElement("label");
+  wrap.className = "checkbox-field";
+  const cb = document.createElement("input");
+  cb.type = "checkbox";
+  cb.id = "setting-block-trackers";
+  cb.checked = true;
+  const txt = document.createElement("span");
+  txt.textContent = "Bloquer les publicités et traceurs (filtre réseau natif)";
+  wrap.appendChild(cb);
+  wrap.appendChild(txt);
+  btnSaveGeneral.parentElement.parentElement.insertBefore(
+    wrap,
+    btnSaveGeneral.parentElement,
+  );
+  settingBlockTrackersEl = cb;
+}
+
 let appConfig = null;
 let currentSpaceId = "sp_perso";
 let currentActiveId = null;
@@ -196,16 +231,6 @@ window.browserAPI.onRamStats(({ mb, processCount }) => {
   if (ramMeterEl && typeof processCount === "number") {
     ramMeterEl.title = `Mémoire utilisée par ${processCount} processus Katyn Oracle`;
   }
-  if (ramProgressFillEl && Number.isFinite(mb)) {
-    const pct = Math.max(6, Math.min(100, Math.round((mb / 4096) * 100)));
-    ramProgressFillEl.style.width = `${pct}%`;
-    ramProgressFillEl.classList.remove("is-warn", "is-danger");
-    if (mb >= 3072) {
-      ramProgressFillEl.classList.add("is-danger");
-    } else if (mb >= 1800) {
-      ramProgressFillEl.classList.add("is-warn");
-    }
-  }
 });
 
 function extractHostname(rawUrl) {
@@ -229,12 +254,10 @@ function createBadgeFallback(labelText) {
   return span;
 }
 
-function createBookmarkIconElement(bm) {
-  const hostname = extractHostname(bm && bm.url);
-  const fallbackLabel = (bm && (bm.icon || bm.title)) || "L";
-
+function createSiteIconElement(url, fallbackText = "L") {
+  const hostname = extractHostname(url);
   if (!hostname) {
-    return createBadgeFallback(fallbackLabel);
+    return createBadgeFallback(fallbackText);
   }
 
   const img = document.createElement("img");
@@ -250,7 +273,7 @@ function createBookmarkIconElement(bm) {
       img.src = `https://${hostname}/favicon.ico`;
       return;
     }
-    img.replaceWith(createBadgeFallback(fallbackLabel));
+    img.replaceWith(createBadgeFallback(fallbackText));
   };
 
   return img;
@@ -323,27 +346,25 @@ function getProfileById(profileId) {
 
 function applyGeneralSettingsUI() {
   if (!appConfig || !appConfig.settings) return;
-  const width = Number(appConfig.settings.sidebarWidth) || 256;
+  const width = Number(appConfig.settings.sidebarWidth) || 224;
   sidebarEl.style.width = `${width}px`;
 
   settingSearchEngine.value = appConfig.settings.searchEngine || "google";
   settingHomeUrl.value = appConfig.settings.homeUrl || "katyn://accueil";
   settingSidebarWidth.value = width;
+  if (settingBlockTrackersEl) {
+    settingBlockTrackersEl.checked = appConfig.settings.blockTrackers !== false;
+  }
 }
 
 function renderSpaceHeaderAndDropdown() {
   const activeSpace = getActiveSpace();
   if (!activeSpace) return;
-  const prof = getProfileById(activeSpace.profileId);
 
   currentSpaceLabel.textContent = activeSpace.name;
-  spaceAvatarEl.textContent = (activeSpace.name || "P")
-    .slice(0, 1)
-    .toUpperCase();
-  spaceAvatarEl.style.borderColor = activeSpace.color || "#8FE3DC";
-  spaceAvatarEl.style.color = activeSpace.color || "#8FE3DC";
-
-  currentProfileBadge.textContent = prof ? `Profil ${prof.name}` : "Profil";
+  const spColor = activeSpace.color || "#8FE3DC";
+  spaceIndicatorEl.style.background = spColor;
+  spaceIndicatorEl.style.borderColor = spColor;
 
   spacesDropdown.innerHTML = "";
   appConfig.spaces.forEach((sp) => {
@@ -367,86 +388,6 @@ function renderSpaceHeaderAndDropdown() {
   });
 }
 
-function renderResumeCards() {
-  if (!resumeCardsEl || !appConfig) return;
-  resumeCardsEl.innerHTML = "";
-
-  const candidateSpaces = appConfig.spaces.slice(0, 3);
-  candidateSpaces.forEach((sp) => {
-    const firstBookmark = (sp.folders || []).flatMap(
-      (f) => f.bookmarks || [],
-    )[0];
-
-    const card = document.createElement("button");
-    card.type = "button";
-    card.className = "resume-card";
-
-    const topLine = document.createElement("div");
-    topLine.className = "resume-card-space";
-    const dot = document.createElement("span");
-    dot.className = "diamond-dot is-filled";
-    dot.style.background = sp.color || "#8FE3DC";
-    dot.style.borderColor = sp.color || "#8FE3DC";
-    const spName = document.createElement("span");
-    spName.textContent = sp.name;
-    topLine.appendChild(dot);
-    topLine.appendChild(spName);
-
-    const titleEl = document.createElement("div");
-    titleEl.className = "resume-card-title";
-    titleEl.textContent = firstBookmark
-      ? `[${firstBookmark.title.toUpperCase()}]`
-      : "[ACCUEIL]";
-
-    const metaEl = document.createElement("div");
-    metaEl.className = "resume-card-meta";
-    metaEl.textContent = firstBookmark
-      ? firstBookmark.url.replace(/^https?:\/\//i, "")
-      : "Espace prêt";
-
-    card.appendChild(topLine);
-    card.appendChild(titleEl);
-    card.appendChild(metaEl);
-
-    card.onclick = async () => {
-      if (sp.id !== currentSpaceId) {
-        await selectSpace(sp.id, false);
-      }
-      if (firstBookmark) {
-        await openOrFocusBookmark(firstBookmark);
-      } else {
-        await navigateToInput("katyn://accueil");
-      }
-    };
-
-    resumeCardsEl.appendChild(card);
-  });
-}
-
-async function promptAddSharedPin() {
-  const res = await askUserInput({
-    title: "Nouveau raccourci épinglé",
-    label1: "Titre",
-    placeholder1: "Ex: GitHub",
-    showField2: true,
-    label2: "URL",
-    placeholder2: "https://github.com",
-    showField3: true,
-    label3: "Icône ou lettre",
-    value3: "link",
-  });
-  if (!res || !res.field2 || !res.field2.trim()) return;
-
-  appConfig = await window.browserAPI.addSharedPin({
-    title: res.field1.trim(),
-    url: res.field2.trim(),
-    icon: (res.field3 || "link").trim(),
-    incognito: false,
-  });
-  renderSharedPins();
-  renderSettingsModalPanels();
-}
-
 function renderSharedPins() {
   pinnedGridEl.innerHTML = "";
   const pins =
@@ -454,7 +395,7 @@ function renderSharedPins() {
       ? appConfig.sharedPins
       : [];
 
-  pins.slice(0, 4).forEach((pin) => {
+  pins.forEach((pin) => {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "pin-card";
@@ -466,14 +407,6 @@ function renderSharedPins() {
       showContextMenu(e, { url: pin.url, title: pin.title });
     pinnedGridEl.appendChild(btn);
   });
-
-  const addBtn = document.createElement("button");
-  addBtn.type = "button";
-  addBtn.className = "pin-card pin-card-add";
-  addBtn.title = "Ajouter un raccourci épinglé";
-  addBtn.textContent = "+";
-  addBtn.onclick = promptAddSharedPin;
-  pinnedGridEl.appendChild(addBtn);
 }
 
 function syncPinnedActiveBookmarks(folderBlock, listEl) {
@@ -503,26 +436,6 @@ function updateBookmarkStates() {
   document.querySelectorAll(".folder-block").forEach((block) => {
     const listEl = block.querySelector(".folder-bookmarks");
     syncPinnedActiveBookmarks(block, listEl);
-  });
-}
-
-function applySidebarFilter() {
-  const q = (quickSearchInput ? quickSearchInput.value : "")
-    .trim()
-    .toLowerCase();
-
-  document.querySelectorAll(".bookmark-item").forEach((item) => {
-    const label = (item.dataset.title || "").toLowerCase();
-    const url = (item.dataset.url || "").toLowerCase();
-    item.style.display =
-      !q || label.includes(q) || url.includes(q) ? "" : "none";
-  });
-
-  document.querySelectorAll(".tab-item").forEach((item) => {
-    const label = (item.dataset.title || "").toLowerCase();
-    const url = (item.dataset.url || "").toLowerCase();
-    item.style.display =
-      !q || label.includes(q) || url.includes(q) ? "" : "none";
   });
 }
 
@@ -573,12 +486,28 @@ function renderFolders() {
   foldersContainerEl.innerHTML = "";
   if (!activeSpace) return;
 
-  (activeSpace.folders || []).forEach((folder, index) => {
+  (activeSpace.folders || []).forEach((folder) => {
     const folderBlock = document.createElement("div");
     folderBlock.className = `folder-block${folder.expanded ? "" : " is-collapsed"}`;
+    folderBlock.dataset.folderId = folder.id;
 
     const header = document.createElement("div");
     header.className = "folder-header";
+    header.draggable = true;
+
+    header.addEventListener("dragstart", (e) => {
+      draggedFolderId = folder.id;
+      draggedBookmark = null;
+      folderBlock.classList.add("is-dragging");
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", `folder:${folder.id}`);
+    });
+
+    header.addEventListener("dragend", () => {
+      draggedFolderId = null;
+      draggedBookmark = null;
+      clearDragIndicators();
+    });
 
     const titleWrap = document.createElement("div");
     titleWrap.className = "folder-title-wrap";
@@ -587,30 +516,21 @@ function renderFolders() {
     arrow.className = "folder-arrow";
     arrow.textContent = folder.expanded ? "▾" : "▸";
 
-    const diamond = document.createElement("span");
-    diamond.className = "diamond-dot is-filled";
-    const palette = ["#F2B8D0", "#F5C6A5", "#8FE3DC", "#B8B4F8"];
-    const dotColor = palette[index % palette.length];
-    diamond.style.background = dotColor;
-    diamond.style.borderColor = dotColor;
+    const folderGlyph = document.createElement("span");
+    folderGlyph.className = "folder-glyph";
+    folderGlyph.innerHTML =
+      '<svg class="icon-svg icon-sm" viewBox="0 0 24 24"><path d="M3 6h6l2 2h10v11H3z"></path></svg>';
 
     const nameSpan = document.createElement("span");
     nameSpan.className = "folder-name-text";
     nameSpan.textContent = folder.name;
 
     titleWrap.appendChild(arrow);
-    titleWrap.appendChild(diamond);
+    titleWrap.appendChild(folderGlyph);
     titleWrap.appendChild(nameSpan);
 
     const actions = document.createElement("div");
     actions.className = "folder-actions";
-
-    if ((folder.bookmarks || []).length > 0) {
-      const countSpan = document.createElement("span");
-      countSpan.className = "folder-count";
-      countSpan.textContent = String(folder.bookmarks.length);
-      actions.appendChild(countSpan);
-    }
 
     const addBtn = document.createElement("button");
     addBtn.type = "button";
@@ -638,7 +558,6 @@ function renderFolders() {
         },
       );
       renderFolders();
-      renderResumeCards();
     };
 
     const renameBtn = document.createElement("button");
@@ -649,7 +568,7 @@ function renderFolders() {
     renameBtn.onclick = async (e) => {
       e.stopPropagation();
       const res = await askUserInput({
-        title: "Renommer",
+        title: "Renommer le dossier",
         label1: "Nouveau nom",
         value1: folder.name,
       });
@@ -674,7 +593,6 @@ function renderFolders() {
         folder.id,
       );
       renderFolders();
-      renderResumeCards();
     };
 
     actions.appendChild(addBtn);
@@ -686,6 +604,70 @@ function renderFolders() {
 
     const listEl = document.createElement("div");
     listEl.className = `folder-bookmarks${folder.expanded ? "" : " collapsed"}`;
+    listEl.dataset.folderId = folder.id;
+
+    // Drop d'un dossier ou d'un lien sur le bloc/header/liste du dossier
+    folderBlock.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      if (draggedFolderId && draggedFolderId !== folder.id) {
+        folderBlock.classList.add("drag-over-folder");
+      } else if (draggedBookmark) {
+        folderBlock.classList.add("drag-over-folder");
+      }
+    });
+
+    folderBlock.addEventListener("dragleave", (e) => {
+      if (!folderBlock.contains(e.relatedTarget)) {
+        folderBlock.classList.remove("drag-over-folder");
+      }
+    });
+
+    folderBlock.addEventListener("drop", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const targetFolderId = folder.id;
+
+      if (draggedFolderId && draggedFolderId !== targetFolderId) {
+        const currentIds = (activeSpace.folders || []).map((f) => f.id);
+        const fromIdx = currentIds.indexOf(draggedFolderId);
+        const toIdx = currentIds.indexOf(targetFolderId);
+        if (fromIdx !== -1 && toIdx !== -1) {
+          currentIds.splice(fromIdx, 1);
+          currentIds.splice(toIdx, 0, draggedFolderId);
+          draggedFolderId = null;
+          clearDragIndicators();
+          appConfig = await window.browserAPI.reorderFolders(
+            activeSpace.id,
+            currentIds,
+          );
+          renderFolders();
+          return;
+        }
+      }
+
+      if (
+        draggedBookmark &&
+        !(e.target && e.target.closest(".bookmark-item"))
+      ) {
+        const bmPayload = { ...draggedBookmark };
+        draggedBookmark = null;
+        clearDragIndicators();
+        appConfig = await window.browserAPI.moveBookmark(
+          activeSpace.id,
+          bmPayload.folderId,
+          bmPayload.bookmarkId,
+          targetFolderId,
+          null,
+        );
+        renderFolders();
+        return;
+      }
+
+      draggedFolderId = null;
+      draggedBookmark = null;
+      clearDragIndicators();
+    });
 
     header.onclick = () => {
       folder.expanded = !folder.expanded;
@@ -695,22 +677,83 @@ function renderFolders() {
       syncPinnedActiveBookmarks(folderBlock, listEl);
     };
 
-    (folder.bookmarks || []).forEach((bm) => {
+    (folder.bookmarks || []).forEach((bm, bmIdx) => {
       const isOpen = openBookmarkIds.has(bm.id);
       const isCurrent = bm.id === activeBookmarkId;
 
       const item = document.createElement("div");
       item.className = `bookmark-item${isOpen ? " is-open" : ""}${isCurrent ? " active" : ""}`;
       item.dataset.bookmarkId = bm.id;
+      item.dataset.folderId = folder.id;
       item.dataset.title = bm.title;
       item.dataset.url = bm.url;
       item.title = bm.url;
+      item.draggable = true;
+
+      item.addEventListener("dragstart", (e) => {
+        e.stopPropagation();
+        draggedBookmark = { folderId: folder.id, bookmarkId: bm.id };
+        draggedFolderId = null;
+        item.classList.add("is-dragging");
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", `bookmark:${bm.id}`);
+      });
+
+      item.addEventListener("dragover", (e) => {
+        if (!draggedBookmark) return;
+        if (
+          draggedBookmark.bookmarkId === bm.id &&
+          draggedBookmark.folderId === folder.id
+        )
+          return;
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = "move";
+        const rect = item.getBoundingClientRect();
+        const isBottomHalf = e.clientY > rect.top + rect.height / 2;
+        item.classList.toggle("drag-over-bottom", isBottomHalf);
+        item.classList.toggle("drag-over-top", !isBottomHalf);
+      });
+
+      item.addEventListener("dragleave", () => {
+        item.classList.remove("drag-over-top", "drag-over-bottom");
+      });
+
+      item.addEventListener("drop", async (e) => {
+        if (!draggedBookmark) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const rect = item.getBoundingClientRect();
+        const isBottomHalf = e.clientY > rect.top + rect.height / 2;
+        const dropIndex = bmIdx + (isBottomHalf ? 1 : 0);
+
+        const bmPayload = { ...draggedBookmark };
+        draggedBookmark = null;
+        clearDragIndicators();
+
+        if (bmPayload.bookmarkId === bm.id && bmPayload.folderId === folder.id)
+          return;
+
+        appConfig = await window.browserAPI.moveBookmark(
+          activeSpace.id,
+          bmPayload.folderId,
+          bmPayload.bookmarkId,
+          folder.id,
+          dropIndex,
+        );
+        renderFolders();
+      });
+
+      item.addEventListener("dragend", () => {
+        draggedBookmark = null;
+        draggedFolderId = null;
+        clearDragIndicators();
+      });
 
       const mainPart = document.createElement("div");
       mainPart.className = "bookmark-main";
 
-      const bmIconEl = createBookmarkIconElement(bm);
-
+      const bmIconEl = createSiteIconElement(bm.url, bm.icon || bm.title);
       const bmTitle = document.createElement("span");
       bmTitle.className = "bookmark-title";
       bmTitle.textContent = bm.title;
@@ -718,52 +761,18 @@ function renderFolders() {
       mainPart.appendChild(bmIconEl);
       mainPart.appendChild(bmTitle);
 
-      const bmRight = document.createElement("div");
-      bmRight.className = "bookmark-right";
-
       const closeViewBtn = document.createElement("button");
       closeViewBtn.type = "button";
-      closeViewBtn.className = "item-close-active-btn";
-      closeViewBtn.title =
-        "Clore cet onglet (couper le son / libérer la mémoire)";
+      closeViewBtn.className = "item-close-btn";
+      closeViewBtn.title = "Clore cet onglet";
       closeViewBtn.textContent = "−";
       closeViewBtn.onclick = async (e) => {
         e.stopPropagation();
         await closeActiveBookmarkView(bm.id);
       };
 
-      const delBtn = document.createElement("button");
-      delBtn.type = "button";
-      delBtn.className = "bookmark-del";
-      delBtn.title = "Supprimer ce lien";
-      delBtn.textContent = "✕";
-      delBtn.onclick = async (e) => {
-        e.stopPropagation();
-        openBookmarkIds.delete(bm.id);
-        if (activeBookmarkId === bm.id) activeBookmarkId = null;
-        await window.browserAPI.closeBookmarkView(bm.id);
-        appConfig = await window.browserAPI.removeBookmark(
-          activeSpace.id,
-          folder.id,
-          bm.id,
-        );
-        renderFolders();
-        renderResumeCards();
-      };
-
-      const openDiamond = document.createElement("span");
-      openDiamond.className = `diamond-dot${isOpen ? " is-filled" : ""}`;
-      if (isOpen) {
-        openDiamond.style.background = dotColor;
-        openDiamond.style.borderColor = dotColor;
-      }
-
-      bmRight.appendChild(closeViewBtn);
-      bmRight.appendChild(delBtn);
-      bmRight.appendChild(openDiamond);
-
       item.appendChild(mainPart);
-      item.appendChild(bmRight);
+      item.appendChild(closeViewBtn);
       item.onclick = () => openOrFocusBookmark(bm);
       item.oncontextmenu = (e) =>
         showContextMenu(e, { url: bm.url, title: bm.title, bookmarkId: bm.id });
@@ -776,8 +785,6 @@ function renderFolders() {
     syncPinnedActiveBookmarks(folderBlock, listEl);
     foldersContainerEl.appendChild(folderBlock);
   });
-
-  applySidebarFilter();
 }
 
 function syncTopBarWithTab(title, url, canGoBack = null, canGoForward = null) {
@@ -805,13 +812,20 @@ function renderTabElement(id, title, isActive = false, url = "") {
   li.dataset.title = title || "Nouvel onglet";
   li.dataset.url = url || "";
 
+  const mainPart = document.createElement("div");
+  mainPart.className = "tab-main";
+
+  const iconEl = createSiteIconElement(url, title || "O");
   const span = document.createElement("span");
   span.className = "tab-title";
   span.textContent = title;
 
+  mainPart.appendChild(iconEl);
+  mainPart.appendChild(span);
+
   const btnMinus = document.createElement("button");
   btnMinus.type = "button";
-  btnMinus.className = "item-close-active-btn";
+  btnMinus.className = "item-close-btn";
   btnMinus.title = "Clore cet onglet";
   btnMinus.textContent = "−";
   btnMinus.onclick = (e) => {
@@ -825,7 +839,7 @@ function renderTabElement(id, title, isActive = false, url = "") {
     }
   };
 
-  li.appendChild(span);
+  li.appendChild(mainPart);
   li.appendChild(btnMinus);
   li.onclick = () => {
     activeBookmarkId = null;
@@ -843,7 +857,6 @@ function renderTabElement(id, title, isActive = false, url = "") {
     });
 
   tabsListEl.appendChild(li);
-  applySidebarFilter();
 }
 
 function setActiveTab(id) {
@@ -882,7 +895,6 @@ async function selectSpace(spaceId, openHomeIfEmpty = true) {
   renderSpaceHeaderAndDropdown();
   renderSharedPins();
   renderFolders();
-  renderResumeCards();
 
   tabsListEl.innerHTML = "";
   currentActiveId = null;
@@ -1021,7 +1033,6 @@ ctxAddBookmarkBtn.addEventListener("click", async () => {
     url: targetUrl,
   });
   renderFolders();
-  renderResumeCards();
 });
 
 ctxCloseViewBtn.addEventListener("click", async () => {
@@ -1059,9 +1070,7 @@ btnReload.addEventListener("click", () => {
   }
 });
 
-btnQuickHome.addEventListener("click", () =>
-  navigateToInput("katyn://accueil"),
-);
+btnLogoMenu.addEventListener("click", () => navigateToInput("katyn://accueil"));
 btnBookmarkCurrent.addEventListener("click", async () => {
   const activeSpace = getActiveSpace();
   const currentUrl = urlInput.value.trim();
@@ -1078,7 +1087,6 @@ btnBookmarkCurrent.addEventListener("click", async () => {
     url: currentUrl,
   });
   renderFolders();
-  renderResumeCards();
 });
 
 btnOpenMenu.addEventListener("click", () => openSettingsModal("general"));
@@ -1099,10 +1107,6 @@ btnToggleSidebarMode.addEventListener("click", () => {
   });
   renderFolders();
 });
-
-if (quickSearchInput) {
-  quickSearchInput.addEventListener("input", applySidebarFilter);
-}
 
 function renderSettingsModalPanels() {
   if (!appConfig) return;
@@ -1129,7 +1133,7 @@ function renderSettingsModalPanels() {
 
     const renameBtn = document.createElement("button");
     renameBtn.type = "button";
-    renameBtn.className = "btn-mini-pill";
+    renameBtn.className = "btn-secondary";
     renameBtn.textContent = "Renommer";
     renameBtn.onclick = async () => {
       const res = await askUserInput({
@@ -1175,14 +1179,14 @@ function renderSettingsModalPanels() {
 
     const info = document.createElement("div");
     info.className = "config-row-info";
-    info.innerHTML = `<span style="color:${sp.color || "#8FE3DC"}">◆</span> <strong>${sp.name}</strong> <span class="profile-badge">${spProf ? spProf.name : ""}</span>`;
+    info.innerHTML = `<span style="color:${sp.color || "#8FE3DC"}">◆</span> <strong>${sp.name}</strong> <span>${spProf ? spProf.name : ""}</span>`;
 
     const actions = document.createElement("div");
     actions.className = "config-row-actions";
 
     const renameBtn = document.createElement("button");
     renameBtn.type = "button";
-    renameBtn.className = "btn-mini-pill";
+    renameBtn.className = "btn-secondary";
     renameBtn.textContent = "Modifier";
     renameBtn.onclick = async () => {
       const res = await askUserInput({
@@ -1198,7 +1202,6 @@ function renderSettingsModalPanels() {
         sp.color,
       );
       renderSpaceHeaderAndDropdown();
-      renderResumeCards();
       renderSettingsModalPanels();
     };
 
@@ -1215,7 +1218,6 @@ function renderSettingsModalPanels() {
           await selectSpace(appConfig.spaces[0].id);
         } else {
           renderSpaceHeaderAndDropdown();
-          renderResumeCards();
         }
         renderSettingsModalPanels();
       };
@@ -1323,7 +1325,10 @@ btnSaveGeneral.addEventListener("click", async () => {
   appConfig = await window.browserAPI.updateSettings({
     searchEngine: settingSearchEngine.value,
     homeUrl: settingHomeUrl.value.trim() || "katyn://accueil",
-    sidebarWidth: Number(settingSidebarWidth.value) || 256,
+    sidebarWidth: Number(settingSidebarWidth.value) || 224,
+    blockTrackers: settingBlockTrackersEl
+      ? Boolean(settingBlockTrackersEl.checked)
+      : true,
   });
   applyGeneralSettingsUI();
   closeSettingsModal();
@@ -1348,7 +1353,6 @@ btnAddSpace.addEventListener("click", async () => {
   );
   newSpaceNameEl.value = "";
   renderSpaceHeaderAndDropdown();
-  renderResumeCards();
   renderSettingsModalPanels();
 });
 
@@ -1380,8 +1384,8 @@ document.addEventListener("click", () => {
 
 btnNewFolder.addEventListener("click", async () => {
   const res = await askUserInput({
-    title: "Nouveau dossier / espace",
-    label1: "Nom",
+    title: "Nouveau dossier",
+    label1: "Nom du dossier",
     placeholder1: "Ex: Social Media, Stream, Dev",
   });
   if (!res || !res.field1 || !res.field1.trim()) return;
@@ -1391,7 +1395,6 @@ btnNewFolder.addEventListener("click", async () => {
     res.field1.trim(),
   );
   renderFolders();
-  renderResumeCards();
 });
 
 btnNewTab.addEventListener("click", () => {
@@ -1436,11 +1439,6 @@ window.browserAPI.onShortcut((action) => {
       urlInput.focus();
       urlInput.select();
     }
-  } else if (action === "quick-search") {
-    if (quickSearchInput) {
-      quickSearchInput.focus();
-      quickSearchInput.select();
-    }
   } else if (action === "reload") {
     if (!isOnHomeView && currentActiveId && currentActiveId !== "home_view") {
       window.browserAPI.reload(currentActiveId);
@@ -1468,7 +1466,19 @@ window.browserAPI.onTabUpdated(
     const tabEl = document.querySelector(`.tab-item[data-tab-id="${id}"]`);
     if (tabEl) {
       tabEl.dataset.title = safeTitle;
-      if (url) tabEl.dataset.url = url;
+      if (url) {
+        tabEl.dataset.url = url;
+        const mainPart = tabEl.querySelector(".tab-main");
+        const titleSpan = tabEl.querySelector(".tab-title");
+        if (mainPart && titleSpan) {
+          const oldIcon = mainPart.querySelector(
+            ".bookmark-favicon, .item-letter-badge",
+          );
+          if (oldIcon) {
+            oldIcon.replaceWith(createSiteIconElement(url, safeTitle));
+          }
+        }
+      }
       const titleSpan = tabEl.querySelector(".tab-title");
       if (titleSpan) titleSpan.textContent = safeTitle;
     }
@@ -1500,7 +1510,6 @@ window.browserAPI.onTabSelected((id) => {
   renderSpaceHeaderAndDropdown();
   renderSharedPins();
   renderFolders();
-  renderResumeCards();
 
   const homePref =
     (appConfig.settings && appConfig.settings.homeUrl) || "katyn://accueil";

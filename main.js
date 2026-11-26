@@ -26,6 +26,8 @@ let cachedConfig = null;
 
 const tabs = new Map(); // id -> { view, spaceId, partition, bookmarkId, isIncognito }
 const bookmarkTabMap = new Map(); // bookmarkId -> tabId
+const adblockInstalledSessions = new WeakSet();
+
 let activeTabId = null;
 let suspendedTabId = null;
 let currentSpaceId = "sp_perso";
@@ -33,6 +35,136 @@ let currentSpaceId = "sp_perso";
 const VIEW_MARGIN = 8;
 const TOPBAR_HEIGHT = 44;
 const VIEW_RADIUS = 8;
+
+const BLOCKED_AD_DOMAINS = new Set([
+  "doubleclick.net",
+  "googlesyndication.com",
+  "googleadservices.com",
+  "adservice.google.com",
+  "pagead2.googlesyndication.com",
+  "tpc.googlesyndication.com",
+  "googletagmanager.com",
+  "google-analytics.com",
+  "analytics.google.com",
+  "stats.g.doubleclick.net",
+  "adnxs.com",
+  "rubiconproject.com",
+  "pubmatic.com",
+  "openx.net",
+  "criteo.com",
+  "criteo.net",
+  "taboola.com",
+  "outbrain.com",
+  "mgid.com",
+  "zedo.com",
+  "advertising.com",
+  "scorecardresearch.com",
+  "quantserve.com",
+  "hotjar.com",
+  "clarity.ms",
+  "mixpanel.com",
+  "segment.io",
+  "amplitude.com",
+  "bugsnag.com",
+  "sentry.io",
+  "appsflyer.com",
+  "adjust.com",
+  "branch.io",
+  "krxd.net",
+  "bluekai.com",
+  "demdex.net",
+  "lijit.com",
+  "casalemedia.com",
+  "yieldmo.com",
+  "smartadserver.com",
+  "contextweb.com",
+  "serving-sys.com",
+  "adform.net",
+  "amazon-adsystem.com",
+  "moatads.com",
+  "adsrvr.org",
+  "rlcdn.com",
+  "exoclick.com",
+  "juicyads.com",
+  "trafficjunky.com",
+  "propellerads.com",
+  "revcontent.com",
+  "adroll.com",
+  "bidswitch.net",
+  "spotxchange.com",
+  "tremorhub.com",
+  "lkqd.net",
+  "imasdk.googleapis.com",
+]);
+
+const BLOCKED_URL_PATTERNS = [
+  /\/pagead\//i,
+  /\/adserver/i,
+  /\/advert/i,
+  /\/banners?\//i,
+  /\/prebid/i,
+  /\/collect\?.*v=2.*tid=/i,
+  /\/tr\?.*ev=/i,
+];
+
+function shouldBlockUrl(rawUrl, cfg = loadConfig()) {
+  if (!cfg || !cfg.settings || cfg.settings.blockTrackers === false) {
+    return false;
+  }
+  if (!rawUrl || typeof rawUrl !== "string") return false;
+  if (
+    rawUrl.startsWith("katyn://") ||
+    rawUrl.startsWith("file://") ||
+    rawUrl.startsWith("devtools://")
+  ) {
+    return false;
+  }
+
+  try {
+    const parsed = new URL(rawUrl);
+    const host = (parsed.hostname || "").toLowerCase();
+    if (!host) return false;
+
+    if (BLOCKED_AD_DOMAINS.has(host)) return true;
+
+    const parts = host.split(".");
+    for (let i = 1; i < parts.length - 1; i++) {
+      const parentDomain = parts.slice(i).join(".");
+      if (BLOCKED_AD_DOMAINS.has(parentDomain)) return true;
+    }
+
+    const fullPath = `${parsed.pathname}${parsed.search}`;
+    for (const rx of BLOCKED_URL_PATTERNS) {
+      if (rx.test(fullPath)) return true;
+    }
+  } catch {
+    return false;
+  }
+
+  return false;
+}
+
+function installNativeAdblockerOnSession(targetSession) {
+  if (
+    !targetSession ||
+    !targetSession.webRequest ||
+    adblockInstalledSessions.has(targetSession)
+  ) {
+    return;
+  }
+  adblockInstalledSessions.add(targetSession);
+
+  targetSession.webRequest.onBeforeRequest(
+    { urls: ["<all_urls>"] },
+    (details, callback) => {
+      if (shouldBlockUrl(details.url)) {
+        callback({ cancel: true });
+        return;
+      }
+      callback({});
+    },
+  );
+}
 
 const SEARCH_ENGINES = {
   google: "https://www.google.com/search?q=",
@@ -76,7 +208,8 @@ const DEFAULT_CONFIG = {
   settings: {
     searchEngine: "google",
     homeUrl: "katyn://accueil",
-    sidebarWidth: 256,
+    sidebarWidth: 224,
+    blockTrackers: true,
   },
   sharedPins: DEFAULT_SHARED_PINS,
   extensions: [],
@@ -245,6 +378,10 @@ function normalizeConfig(raw) {
         : base.spaces,
   };
 
+  if (typeof cfg.settings.blockTrackers !== "boolean") {
+    cfg.settings.blockTrackers = true;
+  }
+
   const validProfileIds = new Set(cfg.profiles.map((p) => p.id));
   const fallbackProfileId = cfg.profiles[0].id;
 
@@ -307,8 +444,8 @@ function getSpaceById(cfg, spaceId) {
 
 function getSidebarWidth(cfg) {
   const w = Number(cfg && cfg.settings && cfg.settings.sidebarWidth);
-  if (!Number.isFinite(w)) return 256;
-  return Math.max(210, Math.min(440, Math.round(w)));
+  if (!Number.isFinite(w)) return 224;
+  return Math.max(200, Math.min(420, Math.round(w)));
 }
 
 function applyBoundsToView(view, cfg = loadConfig()) {
@@ -572,7 +709,14 @@ function registerAppShortcuts() {
 }
 
 function createWindow() {
-  loadConfig();
+  const cfg = loadConfig();
+  installNativeAdblockerOnSession(session.defaultSession);
+  for (const sp of cfg.spaces) {
+    if (sp.partition) {
+      installNativeAdblockerOnSession(session.fromPartition(sp.partition));
+    }
+  }
+
   const iconPath = getAppIconPath();
 
   mainWindow = new BrowserWindow({
@@ -654,6 +798,7 @@ function instantiateTabView({
     ? `incognito_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
     : space.partition;
   const targetSession = session.fromPartition(partitionKey);
+  installNativeAdblockerOnSession(targetSession);
 
   const view = new WebContentsView({
     webPreferences: {
@@ -815,6 +960,9 @@ ipcMain.handle("update-settings", (_event, partialSettings) => {
       settings: { ...cfg.settings, ...partialSettings },
     }),
   };
+  if (typeof cfg.settings.blockTrackers !== "boolean") {
+    cfg.settings.blockTrackers = true;
+  }
   saveConfig(cfg);
   updateAllActiveViewBounds(cfg);
   return cfg;
@@ -897,6 +1045,7 @@ ipcMain.handle("add-space", (_event, { name, profileId, color }) => {
     folders: [],
   });
 
+  installNativeAdblockerOnSession(session.fromPartition(partition));
   saveConfig(cfg);
   return cfg;
 });
@@ -970,6 +1119,30 @@ ipcMain.handle(
 );
 
 ipcMain.handle(
+  "reorder-folders",
+  (_event, { spaceId = currentSpaceId, orderedFolderIds }) => {
+    const cfg = loadConfig();
+    const sp = getSpaceById(cfg, spaceId);
+    if (!sp || !Array.isArray(orderedFolderIds)) return cfg;
+
+    const folderMap = new Map((sp.folders || []).map((f) => [f.id, f]));
+    const reordered = [];
+    for (const id of orderedFolderIds) {
+      if (folderMap.has(id)) {
+        reordered.push(folderMap.get(id));
+        folderMap.delete(id);
+      }
+    }
+    for (const leftover of folderMap.values()) {
+      reordered.push(leftover);
+    }
+    sp.folders = reordered;
+    saveConfig(cfg);
+    return cfg;
+  },
+);
+
+ipcMain.handle(
   "add-bookmark",
   (_event, { spaceId = currentSpaceId, folderId, bookmark }) => {
     const cfg = loadConfig();
@@ -1003,6 +1176,50 @@ ipcMain.handle(
       folder.bookmarks = folder.bookmarks.filter((b) => b.id !== bookmarkId);
       saveConfig(cfg);
     }
+    return cfg;
+  },
+);
+
+ipcMain.handle(
+  "move-bookmark",
+  (
+    _event,
+    {
+      spaceId = currentSpaceId,
+      sourceFolderId,
+      bookmarkId,
+      targetFolderId,
+      targetIndex = null,
+    },
+  ) => {
+    const cfg = loadConfig();
+    const sp = getSpaceById(cfg, spaceId);
+    if (!sp || !Array.isArray(sp.folders)) return cfg;
+
+    const sourceFolder = sp.folders.find((f) => f.id === sourceFolderId);
+    const targetFolder = sp.folders.find((f) => f.id === targetFolderId);
+    if (!sourceFolder || !targetFolder) return cfg;
+
+    const bmIndex = (sourceFolder.bookmarks || []).findIndex(
+      (b) => b.id === bookmarkId,
+    );
+    if (bmIndex === -1) return cfg;
+
+    const [movedBm] = sourceFolder.bookmarks.splice(bmIndex, 1);
+    targetFolder.bookmarks = targetFolder.bookmarks || [];
+    targetFolder.expanded = true;
+
+    if (typeof targetIndex === "number" && Number.isFinite(targetIndex)) {
+      const clampedIdx = Math.max(
+        0,
+        Math.min(targetFolder.bookmarks.length, Math.round(targetIndex)),
+      );
+      targetFolder.bookmarks.splice(clampedIdx, 0, movedBm);
+    } else {
+      targetFolder.bookmarks.push(movedBm);
+    }
+
+    saveConfig(cfg);
     return cfg;
   },
 );
