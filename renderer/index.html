@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="style.css" />
+    <title>KatynOracle</title>
+  </head>
+  <body>
+    <aside id="sidebar" class="sidebar">
+      <!-- Espace actif & Paramètres -->
+      <div class="space-selector-wrapper">
+        <button id="current-space-btn" class="current-space-btn" type="button">
+          <img class="brand-logo" src="../assets/logo.png" alt="KatynOracle" />
+          <div class="space-btn-text">
+            <div class="space-primary-line">
+              <span id="space-indicator" class="space-indicator">●</span>
+              <span id="current-space-label">Perso</span>
+            </div>
+            <span id="current-profile-badge" class="space-subtitle">Perso</span>
+          </div>
+          <span class="chevron">⌄</span>
+        </button>
+        <button
+          id="btn-open-settings"
+          class="btn-settings"
+          title="Paramètres"
+          type="button"
+        >
+          ⚙️
+        </button>
+        <div id="spaces-dropdown" class="spaces-dropdown hidden"></div>
+      </div>
+
+      <!-- Raccourcis partagés -->
+      <div id="pinned-grid" class="pinned-grid"></div>
+
+      <!-- Dossiers de favoris -->
+      <div class="section-header">
+        <span class="section-label">DOSSIERS</span>
+        <button
+          id="btn-new-folder"
+          class="btn-mini"
+          title="Nouveau dossier"
+          type="button"
+        >
+          + Dossier
+        </button>
+      </div>
+      <div id="folders-container" class="folders-container"></div>
+
+      <!-- Onglets ouverts -->
+      <div class="section-header">
+        <span class="section-label">ONGLETS OUVERTS</span>
+        <button
+          id="btn-new-tab"
+          class="btn-mini"
+          title="Nouvel onglet (Ctrl+T)"
+          type="button"
+        >
+          +
+        </button>
+      </div>
+      <ul id="tabs-list" class="tabs-list"></ul>
+
+      <!-- Compteur RAM discret en bas de la barre latérale -->
+      <footer
+        id="ram-meter"
+        class="ram-meter"
+        title="Mémoire utilisée par les processus KatynOracle"
+      >
+        <span class="ram-dot"></span>
+        <span id="ram-meter-text">RAM : -- Mo</span>
+      </footer>
+    </aside>
+
+    <!-- Colonne droite : topbar épurée sur une ligne + page web aux coins arrondis -->
+    <div class="workspace-area">
+      <header class="top-nav-bar">
+        <div class="nav-pill">
+          <button
+            id="btn-back"
+            class="nav-ctrl-btn"
+            title="Page précédente"
+            type="button"
+          >
+            ←
+          </button>
+          <button
+            id="btn-forward"
+            class="nav-ctrl-btn"
+            title="Page suivante"
+            type="button"
+          >
+            →
+          </button>
+          <button
+            id="btn-reload"
+            class="nav-ctrl-btn"
+            title="Actualiser (Ctrl+R)"
+            type="button"
+          >
+            ⟳
+          </button>
+          <form id="nav-form" class="nav-form">
+            <input
+              type="text"
+              id="url-input"
+              placeholder="Rechercher ou URL... (Ctrl+L)"
+              autocomplete="off"
+            />
+          </form>
+        </div>
+        <span id="active-tab-title" class="active-tab-title" title=""></span>
+      </header>
+      <main class="web-view-frame"></main>
+    </div>
+
+    <!-- Modale de saisie rapide -->
+    <div id="input-modal" class="modal-backdrop hidden">
+      <div class="modal-card input-modal-card">
+        <div class="modal-header">
+          <h2 id="input-modal-title">Saisie</h2>
+          <button id="btn-cancel-input-modal" class="btn-mini" type="button">
+            ✕
+          </button>
+        </div>
+        <form id="input-modal-form" class="modal-panel active">
+          <label id="input-modal-label-1" class="field">
+            <span>Nom</span>
+            <input type="text" id="input-modal-field-1" autocomplete="off" />
+          </label>
+          <label id="input-modal-label-2" class="field hidden">
+            <span>URL</span>
+            <input type="text" id="input-modal-field-2" autocomplete="off" />
+          </label>
+          <label id="input-modal-label-3" class="field hidden">
+            <span>Icône (emoji)</span>
+            <input
+              type="text"
+              id="input-modal-field-3"
+              maxlength="4"
+              autocomplete="off"
+            />
+          </label>
+          <div class="input-modal-actions">
+            <button
+              type="button"
+              id="btn-input-cancel-secondary"
+              class="btn-mini"
+            >
+              Annuler
+            </button>
+            <button type="submit" id="btn-input-confirm" class="btn-primary">
+              Valider
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Modale Paramètres -->
+    <div id="settings-modal" class="modal-backdrop hidden">
+      <div class="modal-card">
+        <div class="modal-header">
+          <div class="modal-title-group">
+            <img
+              class="brand-logo brand-logo-sm"
+              src="../assets/logo.png"
+              alt="KatynOracle"
+            />
+            <h2>KatynOracle — Paramètres</h2>
+          </div>
+          <button id="btn-close-settings" class="btn-mini" type="button">
+            ✕
+          </button>
+        </div>
+
+        <div class="modal-tabs">
+          <button class="modal-tab active" data-tab="general" type="button">
+            Général
+          </button>
+          <button class="modal-tab" data-tab="spaces" type="button">
+            Espaces & Profils
+          </button>
+          <button class="modal-tab" data-tab="pins" type="button">
+            Raccourcis partagés
+          </button>
+          <button class="modal-tab" data-tab="extensions" type="button">
+            Extensions
+          </button>
+        </div>
+
+        <!-- Général -->
+        <div id="tab-general" class="modal-panel active">
+          <label class="field">
+            <span>Moteur de recherche</span>
+            <select id="setting-search-engine">
+              <option value="google">Google</option>
+              <option value="brave">Brave Search</option>
+              <option value="bing">Bing</option>
+              <option value="startpage">Startpage</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>Page d'accueil par défaut</span>
+            <input
+              type="text"
+              id="setting-home-url"
+              placeholder="https://www.google.com"
+            />
+          </label>
+
+          <label class="field">
+            <span>Largeur de la barre latérale (px)</span>
+            <input
+              type="number"
+              id="setting-sidebar-width"
+              min="200"
+              max="450"
+              step="10"
+            />
+          </label>
+
+          <div class="modal-actions">
+            <button id="btn-save-general" class="btn-primary" type="button">
+              Enregistrer
+            </button>
+          </div>
+        </div>
+
+        <!-- Espaces & Profils -->
+        <div id="tab-spaces" class="modal-panel">
+          <h3>Profils (sessions/identités)</h3>
+          <div id="profiles-list" class="config-list"></div>
+          <div class="inline-form">
+            <input
+              type="text"
+              id="new-profile-name"
+              placeholder="Nom du profil (ex: Studio, Gaming)"
+            />
+            <input type="color" id="new-profile-color" value="#38bdf8" />
+            <button id="btn-add-profile" class="btn-primary" type="button">
+              + Profil
+            </button>
+          </div>
+
+          <h3 class="mt-16">Espaces de travail</h3>
+          <div id="spaces-config-list" class="config-list"></div>
+          <div class="inline-form">
+            <input
+              type="text"
+              id="new-space-name"
+              placeholder="Nom de l'espace (ex: Tattoo, Code)"
+            />
+            <select id="new-space-profile"></select>
+            <input type="color" id="new-space-color" value="#818cf8" />
+            <button id="btn-add-space" class="btn-primary" type="button">
+              + Espace
+            </button>
+          </div>
+        </div>
+
+        <!-- Pins partagés -->
+        <div id="tab-pins" class="modal-panel">
+          <h3>Raccourcis rapides partagés (tous profils)</h3>
+          <div id="pins-config-list" class="config-list"></div>
+          <div class="inline-form">
+            <input
+              type="text"
+              id="new-pin-icon"
+              placeholder="Icône"
+              maxlength="4"
+              class="input-icon"
+            />
+            <input type="text" id="new-pin-title" placeholder="Titre" />
+            <input type="text" id="new-pin-url" placeholder="https://..." />
+            <button id="btn-add-pin" class="btn-primary" type="button">
+              + Lien
+            </button>
+          </div>
+        </div>
+
+        <!-- Extensions -->
+        <div id="tab-extensions" class="modal-panel">
+          <p class="helper-text">
+            Ajoute un dossier d'extension décompressé (contenant un
+            <code>manifest.json</code>) pour conserver ta liste d'extensions
+            dans KatynOracle.
+          </p>
+
+          <div class="inline-form">
+            <input
+              type="text"
+              id="new-ext-path"
+              placeholder="Chemin du dossier d'extension..."
+            />
+            <button id="btn-browse-ext" class="btn-mini" type="button">
+              Parcourir
+            </button>
+            <button id="btn-add-ext" class="btn-primary" type="button">
+              + Ajouter
+            </button>
+          </div>
+
+          <div id="ext-error-msg" class="error-text hidden"></div>
+
+          <h3>Extensions enregistrées</h3>
+          <div id="extensions-config-list" class="config-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <script src="renderer.js"></script>
+  </body>
+</html>
