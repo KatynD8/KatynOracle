@@ -3,48 +3,82 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Katyn Oracle</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@600;700&display=swap"
+      rel="stylesheet"
+    />
     <link rel="stylesheet" href="style.css" />
-    <title>KatynOracle</title>
   </head>
   <body>
     <aside id="sidebar" class="sidebar">
-      <!-- Espace actif & Paramètres -->
+      <!-- Sélecteur d'espace & bouton vue -->
       <div class="space-selector-wrapper">
-        <button id="current-space-btn" class="current-space-btn" type="button">
-          <img class="brand-logo" src="../assets/logo.png" alt="KatynOracle" />
-          <div class="space-btn-text">
-            <div class="space-primary-line">
-              <span id="space-indicator" class="space-indicator">●</span>
-              <span id="current-space-label">Perso</span>
-            </div>
-            <span id="current-profile-badge" class="space-subtitle">Perso</span>
-          </div>
-          <span class="chevron">⌄</span>
-        </button>
         <button
-          id="btn-open-settings"
-          class="btn-settings"
-          title="Paramètres"
+          id="current-space-btn"
+          class="current-space-btn"
           type="button"
+          title="Changer d'espace"
         >
-          ⚙️
+          <span id="space-avatar" class="space-avatar">P</span>
+          <span class="space-btn-text">
+            <span id="current-space-label">Perso</span>
+            <span id="current-profile-badge" class="profile-subtitle"
+              >Profil</span
+            >
+          </span>
+          <svg class="icon-svg chevron" viewBox="0 0 24 24" aria-hidden="true">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
         </button>
+
+        <button
+          id="btn-toggle-sidebar-mode"
+          class="btn-icon-square"
+          type="button"
+          title="Replier / déplier les dossiers"
+        >
+          <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+            <rect x="3" y="4" width="18" height="16" rx="2"></rect>
+            <line x1="9" y1="4" x2="9" y2="20"></line>
+          </svg>
+        </button>
+
         <div id="spaces-dropdown" class="spaces-dropdown hidden"></div>
       </div>
 
-      <!-- Raccourcis partagés -->
+      <!-- Recherche rapide onglets & favoris (Ctrl K) -->
+      <div class="quick-search-box">
+        <svg
+          class="icon-svg quick-search-icon"
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+        >
+          <circle cx="11" cy="11" r="7"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+        <input
+          id="quick-search-input"
+          type="text"
+          placeholder="Rechercher onglets, favoris..."
+          autocomplete="off"
+        />
+        <span class="kbd-hint">Ctrl K</span>
+      </div>
+
+      <!-- Épinglés -->
+      <div class="section-header">
+        <span class="section-label">ÉPINGLÉS</span>
+      </div>
       <div id="pinned-grid" class="pinned-grid"></div>
 
-      <!-- Dossiers de favoris -->
+      <!-- Espaces / Dossiers -->
       <div class="section-header">
-        <span class="section-label">DOSSIERS</span>
-        <button
-          id="btn-new-folder"
-          class="btn-mini"
-          title="Nouveau dossier"
-          type="button"
-        >
-          + Dossier
+        <span class="section-label">ESPACES</span>
+        <button id="btn-new-folder" class="btn-mini-pill" type="button">
+          + Espace
         </button>
       </div>
       <div id="folders-container" class="folders-container"></div>
@@ -54,109 +88,257 @@
         <span class="section-label">ONGLETS OUVERTS</span>
         <button
           id="btn-new-tab"
-          class="btn-mini"
-          title="Nouvel onglet (Ctrl+T)"
+          class="btn-icon-mini"
           type="button"
+          title="Nouvel onglet (Ctrl+T)"
         >
-          +
+          <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
         </button>
       </div>
       <ul id="tabs-list" class="tabs-list"></ul>
 
-      <!-- Compteur RAM discret en bas de la barre latérale -->
-      <footer
-        id="ram-meter"
-        class="ram-meter"
-        title="Mémoire utilisée par les processus KatynOracle"
-      >
-        <span class="ram-dot"></span>
-        <span id="ram-meter-text">RAM : -- Mo</span>
-      </footer>
+      <!-- Pied de sidebar : RAM + Suspendre + actions -->
+      <div class="sidebar-footer">
+        <div id="ram-meter" class="ram-meter">
+          <div class="ram-meter-top">
+            <span class="ram-status-row">
+              <span class="diamond-dot is-filled" aria-hidden="true"></span>
+              <span id="ram-meter-text">RAM : -- Mo</span>
+            </span>
+            <button
+              id="btn-suspend-inactive"
+              class="btn-suspend"
+              type="button"
+              title="Fermer les vues des espaces inactifs"
+            >
+              <svg
+                class="icon-svg icon-sm"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <line x1="9" y1="5" x2="9" y2="19"></line>
+                <line x1="15" y1="5" x2="15" y2="19"></line>
+              </svg>
+              <span>Suspendre</span>
+            </button>
+          </div>
+          <div class="ram-progress-track">
+            <div id="ram-progress-fill" class="ram-progress-fill"></div>
+          </div>
+        </div>
+
+        <div class="sidebar-bottom-actions">
+          <button
+            id="btn-quick-home"
+            class="btn-ghost-icon"
+            type="button"
+            title="Ouvrir l'accueil (katyn://accueil)"
+          >
+            <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 3v12"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="5" y1="20" x2="19" y2="20"></line>
+            </svg>
+          </button>
+          <button
+            id="btn-open-settings"
+            class="btn-ghost-icon"
+            type="button"
+            title="Paramètres"
+          >
+            <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="12" r="4"></circle>
+              <path
+                d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"
+              ></path>
+            </svg>
+          </button>
+        </div>
+      </div>
     </aside>
 
-    <!-- Colonne droite : topbar épurée sur une ligne + page web aux coins arrondis -->
-    <div class="workspace-area">
+    <main class="workspace-area">
       <header class="top-nav-bar">
-        <div class="nav-pill">
+        <div class="nav-history-group">
           <button
             id="btn-back"
             class="nav-ctrl-btn"
-            title="Page précédente"
             type="button"
+            title="Précédent"
           >
-            ←
+            <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+              <polyline points="15 18 9 12 15 6"></polyline>
+            </svg>
           </button>
           <button
             id="btn-forward"
             class="nav-ctrl-btn"
-            title="Page suivante"
             type="button"
+            title="Suivant"
           >
-            →
+            <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+              <polyline points="9 18 15 12 9 6"></polyline>
+            </svg>
           </button>
           <button
             id="btn-reload"
             class="nav-ctrl-btn"
-            title="Actualiser (Ctrl+R)"
             type="button"
+            title="Actualiser (Ctrl+R)"
           >
-            ⟳
+            <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
+              <polyline points="21 3 21 9 15 9"></polyline>
+            </svg>
           </button>
+        </div>
+
+        <div class="nav-pill">
+          <span
+            id="security-lock-icon"
+            class="nav-lock-wrap"
+            title="Connexion sécurisée"
+          >
+            <svg
+              class="icon-svg icon-sm"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <rect x="5" y="11" width="14" height="10" rx="2"></rect>
+              <path d="M8 11V7a4 4 0 0 1 8 0v4"></path>
+            </svg>
+          </span>
           <form id="nav-form" class="nav-form">
             <input
-              type="text"
               id="url-input"
-              placeholder="Rechercher ou URL... (Ctrl+L)"
+              type="text"
+              placeholder="katyn://accueil"
               autocomplete="off"
+              spellcheck="false"
             />
           </form>
+          <span class="kbd-hint">Ctrl L</span>
         </div>
-        <span id="active-tab-title" class="active-tab-title" title=""></span>
-      </header>
-      <main class="web-view-frame"></main>
-    </div>
 
-    <!-- Modale de saisie rapide -->
-    <div id="input-modal" class="modal-backdrop hidden">
-      <div class="modal-card input-modal-card">
-        <div class="modal-header">
-          <h2 id="input-modal-title">Saisie</h2>
-          <button id="btn-cancel-input-modal" class="btn-mini" type="button">
-            ✕
+        <div class="top-right-actions">
+          <button
+            id="btn-bookmark-current"
+            class="nav-ctrl-btn"
+            type="button"
+            title="Ajouter la page courante aux favoris"
+          >
+            <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+              <polygon
+                points="12 3 14.9 8.9 21.4 9.8 16.7 14.4 17.8 20.9 12 17.8 6.2 20.9 7.3 14.4 2.6 9.8 9.1 8.9 12 3"
+              ></polygon>
+            </svg>
+          </button>
+          <button
+            id="btn-quick-new-tab"
+            class="nav-ctrl-btn"
+            type="button"
+            title="Nouvel onglet"
+          >
+            <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="3" y="4" width="18" height="16" rx="2"></rect>
+              <line x1="15" y1="4" x2="15" y2="20"></line>
+            </svg>
+          </button>
+          <button
+            id="btn-open-menu"
+            class="nav-ctrl-btn"
+            type="button"
+            title="Paramètres"
+          >
+            <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+              <line x1="4" y1="7" x2="20" y2="7"></line>
+              <line x1="4" y1="12" x2="20" y2="12"></line>
+              <line x1="4" y1="17" x2="20" y2="17"></line>
+            </svg>
           </button>
         </div>
-        <form id="input-modal-form" class="modal-panel active">
-          <label id="input-modal-label-1" class="field">
-            <span>Nom</span>
-            <input type="text" id="input-modal-field-1" autocomplete="off" />
-          </label>
-          <label id="input-modal-label-2" class="field hidden">
-            <span>URL</span>
-            <input type="text" id="input-modal-field-2" autocomplete="off" />
-          </label>
-          <label id="input-modal-label-3" class="field hidden">
-            <span>Icône (emoji)</span>
-            <input
-              type="text"
-              id="input-modal-field-3"
-              maxlength="4"
-              autocomplete="off"
-            />
-          </label>
-          <div class="input-modal-actions">
-            <button
-              type="button"
-              id="btn-input-cancel-secondary"
-              class="btn-mini"
-            >
-              Annuler
-            </button>
-            <button type="submit" id="btn-input-confirm" class="btn-primary">
-              Valider
-            </button>
+      </header>
+
+      <!-- Accueil interne Katyn Oracle -->
+      <section id="home-dashboard" class="home-dashboard">
+        <div class="home-watermark" aria-hidden="true">
+          <svg viewBox="0 0 120 120">
+            <polygon
+              points="16,12 44,12 44,52 78,12 108,12 66,58 110,108 78,108 44,68 44,108 16,108"
+              fill="currentColor"
+            ></polygon>
+          </svg>
+        </div>
+
+        <div class="home-center">
+          <div class="home-brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 64 64" width="44" height="44">
+              <polygon
+                points="8,6 23,6 23,27 40,6 56,6 34,30 57,58 40,58 23,36 23,58 8,58"
+                fill="url(#katynGrad)"
+              ></polygon>
+              <defs>
+                <linearGradient
+                  id="katynGrad"
+                  x1="0%"
+                  y1="0%"
+                  x2="100%"
+                  y2="100%"
+                >
+                  <stop offset="0%" stop-color="#B8B4F8"></stop>
+                  <stop offset="100%" stop-color="#8FE3DC"></stop>
+                </linearGradient>
+              </defs>
+            </svg>
           </div>
-        </form>
-      </div>
+
+          <h1 class="home-title">Katyn Oracle</h1>
+
+          <form id="home-search-form" class="home-search-pill">
+            <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="11" cy="11" r="7"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input
+              id="home-search-input"
+              type="text"
+              placeholder="Rechercher ou saisir une adresse"
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </form>
+
+          <div class="resume-section">
+            <div class="resume-label">REPRENDRE</div>
+            <div id="resume-cards" class="resume-cards"></div>
+          </div>
+        </div>
+      </section>
+
+      <div id="web-view-frame" class="web-view-frame hidden"></div>
+    </main>
+
+    <!-- Menu contextuel -->
+    <div id="context-menu" class="context-menu hidden" role="menu">
+      <button
+        id="ctx-open-new-tab"
+        class="context-menu-item is-highlighted"
+        type="button"
+      >
+        Ouvrir dans un nouvel onglet
+      </button>
+      <button id="ctx-copy-link" class="context-menu-item" type="button">
+        Copier le lien
+      </button>
+      <button id="ctx-add-bookmark" class="context-menu-item" type="button">
+        Ajouter aux favoris
+      </button>
+      <button id="ctx-close-view" class="context-menu-item" type="button">
+        Clore la vue (couper son / RAM)
+      </button>
     </div>
 
     <!-- Modale Paramètres -->
@@ -165,13 +347,14 @@
         <div class="modal-header">
           <div class="modal-title-group">
             <img
-              class="brand-logo brand-logo-sm"
               src="../assets/logo.png"
-              alt="KatynOracle"
+              alt="Katyn Oracle"
+              class="brand-logo-sm"
+              onerror="this.style.display = 'none'"
             />
-            <h2>KatynOracle — Paramètres</h2>
+            <h2>Paramètres · Katyn Oracle</h2>
           </div>
-          <button id="btn-close-settings" class="btn-mini" type="button">
+          <button id="btn-close-settings" class="btn-mini-pill" type="button">
             ✕
           </button>
         </div>
@@ -180,23 +363,25 @@
           <button class="modal-tab active" data-tab="general" type="button">
             Général
           </button>
+          <button class="modal-tab" data-tab="profiles" type="button">
+            Profils
+          </button>
           <button class="modal-tab" data-tab="spaces" type="button">
-            Espaces & Profils
+            Espaces
           </button>
           <button class="modal-tab" data-tab="pins" type="button">
-            Raccourcis partagés
+            Épinglés
           </button>
           <button class="modal-tab" data-tab="extensions" type="button">
             Extensions
           </button>
         </div>
 
-        <!-- Général -->
         <div id="tab-general" class="modal-panel active">
           <label class="field">
             <span>Moteur de recherche</span>
             <select id="setting-search-engine">
-              <option value="google">Google</option>
+              <option value="google">Google (Par défaut)</option>
               <option value="brave">Brave Search</option>
               <option value="bing">Bing</option>
               <option value="startpage">Startpage</option>
@@ -204,21 +389,21 @@
           </label>
 
           <label class="field">
-            <span>Page d'accueil par défaut</span>
+            <span>Page d'accueil</span>
             <input
-              type="text"
               id="setting-home-url"
-              placeholder="https://www.google.com"
+              type="text"
+              placeholder="katyn://accueil ou https://..."
             />
           </label>
 
           <label class="field">
             <span>Largeur de la barre latérale (px)</span>
             <input
-              type="number"
               id="setting-sidebar-width"
-              min="200"
-              max="450"
+              type="number"
+              min="210"
+              max="440"
               step="10"
             />
           </label>
@@ -230,85 +415,116 @@
           </div>
         </div>
 
-        <!-- Espaces & Profils -->
-        <div id="tab-spaces" class="modal-panel">
-          <h3>Profils (sessions/identités)</h3>
+        <div id="tab-profiles" class="modal-panel">
           <div id="profiles-list" class="config-list"></div>
-          <div class="inline-form">
+          <div class="inline-form mt-16">
             <input
-              type="text"
               id="new-profile-name"
-              placeholder="Nom du profil (ex: Studio, Gaming)"
+              type="text"
+              placeholder="Nom du profil"
             />
-            <input type="color" id="new-profile-color" value="#38bdf8" />
+            <input id="new-profile-color" type="color" value="#B8B4F8" />
             <button id="btn-add-profile" class="btn-primary" type="button">
-              + Profil
+              Ajouter
             </button>
           </div>
+        </div>
 
-          <h3 class="mt-16">Espaces de travail</h3>
+        <div id="tab-spaces" class="modal-panel">
           <div id="spaces-config-list" class="config-list"></div>
-          <div class="inline-form">
+          <div class="inline-form mt-16">
             <input
-              type="text"
               id="new-space-name"
-              placeholder="Nom de l'espace (ex: Tattoo, Code)"
+              type="text"
+              placeholder="Nom de l'espace"
             />
             <select id="new-space-profile"></select>
-            <input type="color" id="new-space-color" value="#818cf8" />
+            <input id="new-space-color" type="color" value="#8FE3DC" />
             <button id="btn-add-space" class="btn-primary" type="button">
-              + Espace
+              Créer
             </button>
           </div>
         </div>
 
-        <!-- Pins partagés -->
         <div id="tab-pins" class="modal-panel">
-          <h3>Raccourcis rapides partagés (tous profils)</h3>
           <div id="pins-config-list" class="config-list"></div>
-          <div class="inline-form">
+          <div class="inline-form mt-16">
             <input
-              type="text"
               id="new-pin-icon"
-              placeholder="Icône"
-              maxlength="4"
               class="input-icon"
+              type="text"
+              placeholder="◆"
+              maxlength="4"
             />
-            <input type="text" id="new-pin-title" placeholder="Titre" />
-            <input type="text" id="new-pin-url" placeholder="https://..." />
+            <input id="new-pin-title" type="text" placeholder="Titre" />
+            <input id="new-pin-url" type="text" placeholder="https://..." />
             <button id="btn-add-pin" class="btn-primary" type="button">
-              + Lien
+              Ajouter
             </button>
           </div>
         </div>
 
-        <!-- Extensions -->
         <div id="tab-extensions" class="modal-panel">
           <p class="helper-text">
-            Ajoute un dossier d'extension décompressé (contenant un
-            <code>manifest.json</code>) pour conserver ta liste d'extensions
-            dans KatynOracle.
+            Sélectionne un dossier d'extension non empaqueté contenant un
+            <code>manifest.json</code>.
           </p>
-
           <div class="inline-form">
             <input
-              type="text"
               id="new-ext-path"
-              placeholder="Chemin du dossier d'extension..."
+              type="text"
+              placeholder="C:\chemin\vers\extension"
             />
-            <button id="btn-browse-ext" class="btn-mini" type="button">
-              Parcourir
+            <button id="btn-browse-ext" class="btn-secondary" type="button">
+              Parcourir...
             </button>
             <button id="btn-add-ext" class="btn-primary" type="button">
-              + Ajouter
+              Ajouter
             </button>
           </div>
-
-          <div id="ext-error-msg" class="error-text hidden"></div>
-
-          <h3>Extensions enregistrées</h3>
-          <div id="extensions-config-list" class="config-list"></div>
+          <p id="ext-error-msg" class="error-text hidden"></p>
+          <div id="extensions-config-list" class="config-list mt-16"></div>
         </div>
+      </div>
+    </div>
+
+    <!-- Modale de saisie rapide -->
+    <div id="input-modal" class="modal-backdrop hidden">
+      <div class="modal-card input-modal-card">
+        <div class="modal-header">
+          <h2 id="input-modal-title">Saisie</h2>
+          <button
+            id="btn-cancel-input-modal"
+            class="btn-mini-pill"
+            type="button"
+          >
+            ✕
+          </button>
+        </div>
+        <form id="input-modal-form" class="modal-panel active">
+          <label id="input-modal-label-1" class="field">
+            <span>Nom</span>
+            <input id="input-modal-field-1" type="text" />
+          </label>
+          <label id="input-modal-label-2" class="field hidden">
+            <span>URL</span>
+            <input id="input-modal-field-2" type="text" />
+          </label>
+          <label id="input-modal-label-3" class="field hidden">
+            <span>Icône</span>
+            <input id="input-modal-field-3" type="text" />
+          </label>
+          <div class="input-modal-actions">
+            <button
+              id="btn-input-cancel-secondary"
+              class="btn-secondary"
+              type="button"
+            >
+              Annuler
+            </button>
+            <button type="submit" class="btn-primary">Valider</button>
+          </div>
+        </form>
       </div>
     </div>
 

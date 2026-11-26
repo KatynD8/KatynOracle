@@ -55,6 +55,8 @@ contextBridge.exposeInMainWorld("browserAPI", {
     ipcRenderer.invoke("open-or-focus-bookmark", { bookmark, spaceId }),
   closeBookmarkView: (bookmarkId) =>
     ipcRenderer.invoke("close-bookmark-view", bookmarkId),
+  closeInactiveSpaceViews: (keepSpaceId) =>
+    ipcRenderer.invoke("close-inactive-space-views", keepSpaceId),
   switchTab: (tabId) => ipcRenderer.send("switch-tab", tabId),
   closeTab: (tabId) => ipcRenderer.send("close-tab", tabId),
   navigate: (tabId, input) =>
@@ -62,6 +64,7 @@ contextBridge.exposeInMainWorld("browserAPI", {
   goBack: (tabId) => ipcRenderer.send("nav-back", tabId),
   goForward: (tabId) => ipcRenderer.send("nav-forward", tabId),
   reload: (tabId) => ipcRenderer.send("nav-reload", tabId),
+  copyText: (text) => ipcRenderer.send("copy-text", text),
 
   onTabUpdated: (cb) => subscribe("tab-updated", cb),
   onTabSelected: (cb) => subscribe("tab-selected", cb),

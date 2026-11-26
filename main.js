@@ -7,6 +7,7 @@ const {
   ipcMain,
   dialog,
   globalShortcut,
+  clipboard,
 } = require("electron");
 const path = require("path");
 const fs = require("fs");
@@ -30,66 +31,58 @@ let suspendedTabId = null;
 let currentSpaceId = "sp_perso";
 
 const VIEW_MARGIN = 8;
-const TOPBAR_HEIGHT = 42;
-const VIEW_RADIUS = 14;
+const TOPBAR_HEIGHT = 44;
+const VIEW_RADIUS = 8;
 
 const SEARCH_ENGINES = {
   google: "https://www.google.com/search?q=",
-  bing: "https://www.bing.com/search?q=",
   brave: "https://search.brave.com/search?q=",
+  bing: "https://www.bing.com/search?q=",
   startpage: "https://www.startpage.com/sp/search?query=",
 };
 
 const DEFAULT_SHARED_PINS = [
   {
-    id: "sp_pin_extensions",
-    title: "Extensions",
-    url: "",
-    icon: "🧩",
+    id: "sp_pin_home",
+    title: "Accueil",
+    url: "katyn://accueil",
+    icon: "home",
     incognito: false,
-    action: "open-extensions",
   },
   {
     id: "sp_pin_mail",
     title: "Mail",
     url: "https://mail.google.com",
-    icon: "✉️",
+    icon: "mail",
     incognito: false,
   },
   {
     id: "sp_pin_drive",
-    title: "Google Drive",
+    title: "Drive",
     url: "https://drive.google.com",
-    icon: "📁",
+    icon: "folder",
     incognito: false,
   },
   {
     id: "sp_pin_gemini",
     title: "Gemini",
     url: "https://gemini.google.com",
-    icon: "✦",
+    icon: "spark",
     incognito: false,
-  },
-  {
-    id: "sp_pin_incognito",
-    title: "Navigation privée",
-    url: "https://www.google.com",
-    icon: "🕵️",
-    incognito: true,
   },
 ];
 
 const DEFAULT_CONFIG = {
   settings: {
     searchEngine: "google",
-    homeUrl: "https://www.google.com",
-    sidebarWidth: 260,
+    homeUrl: "katyn://accueil",
+    sidebarWidth: 256,
   },
   sharedPins: DEFAULT_SHARED_PINS,
   extensions: [],
   profiles: [
-    { id: "prof_perso", name: "Perso", color: "#38bdf8" },
-    { id: "prof_dev", name: "Dev", color: "#818cf8" },
+    { id: "prof_perso", name: "Perso", color: "#8FE3DC" },
+    { id: "prof_dev", name: "Dev", color: "#B8B4F8" },
   ],
   spaces: [
     {
@@ -97,24 +90,43 @@ const DEFAULT_CONFIG = {
       name: "Perso",
       profileId: "prof_perso",
       partition: "persist:space_sp_perso",
-      color: "#38bdf8",
+      color: "#8FE3DC",
       folders: [
         {
-          id: "f_inspi",
-          name: "Inspi",
+          id: "f_social",
+          name: "Social Media",
           expanded: true,
           bookmarks: [
             {
-              id: "b_1",
-              title: "Pinterest",
-              url: "https://www.pinterest.com",
-              icon: "📌",
+              id: "b_insta",
+              title: "Insta",
+              url: "https://www.instagram.com",
+              icon: "I",
             },
             {
-              id: "b_2",
-              title: "ArtStation",
-              url: "https://www.artstation.com",
-              icon: "🎨",
+              id: "b_fb",
+              title: "Facebook",
+              url: "https://www.facebook.com",
+              icon: "F",
+            },
+            {
+              id: "b_reddit",
+              title: "Reddit",
+              url: "https://www.reddit.com",
+              icon: "R",
+            },
+          ],
+        },
+        {
+          id: "f_stream",
+          name: "Stream",
+          expanded: true,
+          bookmarks: [
+            {
+              id: "b_yt",
+              title: "Youtube",
+              url: "https://www.youtube.com",
+              icon: "Y",
             },
           ],
         },
@@ -122,10 +134,10 @@ const DEFAULT_CONFIG = {
     },
     {
       id: "sp_dev",
-      name: "Dev & IA",
+      name: "Dev",
       profileId: "prof_dev",
       partition: "persist:space_sp_dev",
-      color: "#818cf8",
+      color: "#B8B4F8",
       folders: [
         {
           id: "f_dev",
@@ -133,16 +145,22 @@ const DEFAULT_CONFIG = {
           expanded: true,
           bookmarks: [
             {
-              id: "b_3",
-              title: "MDN Web Docs",
-              url: "https://developer.mozilla.org",
-              icon: "📘",
+              id: "b_chatgpt",
+              title: "ChatGPT",
+              url: "https://chatgpt.com",
+              icon: "C",
             },
             {
-              id: "b_4",
-              title: "Electron Docs",
-              url: "https://www.electronjs.org/docs/latest",
-              icon: "⚡",
+              id: "b_gemini",
+              title: "Gemini",
+              url: "https://gemini.google.com",
+              icon: "G",
+            },
+            {
+              id: "b_github",
+              title: "GitHub",
+              url: "https://github.com",
+              icon: "G",
             },
           ],
         },
@@ -150,6 +168,16 @@ const DEFAULT_CONFIG = {
     },
   ],
 };
+
+function isInternalHomeUrl(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== "string") return false;
+  const clean = rawUrl.trim().toLowerCase();
+  return (
+    clean === "katyn://accueil" ||
+    clean === "katyn://home" ||
+    clean === "about:blank"
+  );
+}
 
 function canGoBackSafe(wc) {
   if (!wc || wc.isDestroyed()) return false;
@@ -229,7 +257,7 @@ function normalizeConfig(raw) {
       ? sp.profileId
       : fallbackProfileId,
     partition: sp.partition || `persist:space_${sp.id}`,
-    color: sp.color || "#38bdf8",
+    color: sp.color || "#8FE3DC",
     folders: Array.isArray(sp.folders) ? sp.folders : [],
   }));
 
@@ -279,8 +307,8 @@ function getSpaceById(cfg, spaceId) {
 
 function getSidebarWidth(cfg) {
   const w = Number(cfg && cfg.settings && cfg.settings.sidebarWidth);
-  if (!Number.isFinite(w)) return 260;
-  return Math.max(200, Math.min(450, Math.round(w)));
+  if (!Number.isFinite(w)) return 256;
+  return Math.max(210, Math.min(440, Math.round(w)));
 }
 
 function applyBoundsToView(view, cfg = loadConfig()) {
@@ -322,7 +350,7 @@ function attachPopupHandlers(view, targetSession) {
     overrideBrowserWindowOptions: {
       width: 540,
       height: 700,
-      backgroundColor: "#070b12",
+      backgroundColor: "#09090E",
       icon: getAppIconPath(),
       autoHideMenuBar: true,
       webPreferences: {
@@ -465,11 +493,11 @@ function switchTab(tabId) {
 }
 
 function formatInputToUrl(input, cfg = loadConfig()) {
-  const homeUrl =
-    (cfg.settings && cfg.settings.homeUrl) || "https://www.google.com";
+  const homeUrl = (cfg.settings && cfg.settings.homeUrl) || "katyn://accueil";
   if (!input || !input.trim()) return homeUrl;
 
   const trimmed = input.trim();
+  if (isInternalHomeUrl(trimmed)) return "katyn://accueil";
   if (/^https?:\/\//i.test(trimmed)) return trimmed;
   if (/^(localhost|\d{1,3}(\.\d{1,3}){3})(:\d+)?(\/.*)?$/i.test(trimmed)) {
     return "http://" + trimmed;
@@ -530,6 +558,9 @@ function registerAppShortcuts() {
       } else if (key === "r") {
         event.preventDefault();
         mainWindow.webContents.send("shortcut-action", "reload");
+      } else if (key === "k") {
+        event.preventDefault();
+        mainWindow.webContents.send("shortcut-action", "quick-search");
       }
     } else if (input.key === "F5") {
       event.preventDefault();
@@ -541,16 +572,16 @@ function registerAppShortcuts() {
 }
 
 function createWindow() {
-  const cfg = loadConfig();
+  loadConfig();
   const iconPath = getAppIconPath();
 
   mainWindow = new BrowserWindow({
-    title: "KatynOracle",
-    width: 1300,
+    title: "Katyn Oracle",
+    width: 1320,
     height: 820,
-    minWidth: 840,
+    minWidth: 860,
     minHeight: 620,
-    backgroundColor: "#070b12",
+    backgroundColor: "#09090E",
     ...(iconPath ? { icon: iconPath } : {}),
     autoHideMenuBar: true,
     webPreferences: {
@@ -603,6 +634,20 @@ function instantiateTabView({
   bookmarkId = null,
   cfg = loadConfig(),
 }) {
+  const finalUrl = formatInputToUrl(targetUrl, cfg);
+
+  if (isInternalHomeUrl(finalUrl)) {
+    detachActiveView();
+    return {
+      id: "home_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6),
+      url: "katyn://accueil",
+      spaceId: space.id,
+      bookmarkId,
+      isInternalHome: true,
+      title: "Accueil",
+    };
+  }
+
   const tabId =
     "tab_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7);
   const partitionKey = isIncognito
@@ -618,7 +663,7 @@ function instantiateTabView({
     },
   });
 
-  view.setBackgroundColor("#080c14");
+  view.setBackgroundColor("#09090E");
   attachRoundedPageCorners(view);
   attachPopupHandlers(view, targetSession);
 
@@ -654,8 +699,6 @@ function instantiateTabView({
   });
 
   switchTab(tabId);
-
-  const finalUrl = formatInputToUrl(targetUrl, cfg);
   view.webContents.loadURL(finalUrl);
 
   return {
@@ -663,9 +706,16 @@ function instantiateTabView({
     url: finalUrl,
     spaceId: space.id,
     bookmarkId,
+    isInternalHome: false,
     title: isIncognito ? "[Privé] Chargement..." : "Chargement...",
   };
 }
+
+ipcMain.on("copy-text", (_event, text) => {
+  if (typeof text === "string" && text.length > 0) {
+    clipboard.writeText(text);
+  }
+});
 
 // IPC Extensions
 ipcMain.handle("pick-extension-folder", async () => {
@@ -778,7 +828,7 @@ ipcMain.handle("add-shared-pin", (_event, { pin }) => {
       id: "sp_pin_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6),
       title: (pin.title || "").trim() || url.replace(/^https?:\/\//i, ""),
       url,
-      icon: (pin.icon || "").trim() || "🔗",
+      icon: (pin.icon || "").trim() || "link",
       incognito: Boolean(pin.incognito),
     });
     saveConfig(cfg);
@@ -800,7 +850,7 @@ ipcMain.handle("add-profile", (_event, { name, color }) => {
   cfg.profiles.push({
     id,
     name: (name || "").trim() || "Profil",
-    color: color || "#38bdf8",
+    color: color || "#B8B4F8",
   });
   saveConfig(cfg);
   return cfg;
@@ -843,7 +893,7 @@ ipcMain.handle("add-space", (_event, { name, profileId, color }) => {
     name: (name || "").trim() || "Nouvel espace",
     profileId: validProfileId,
     partition,
-    color: color || "#38bdf8",
+    color: color || "#8FE3DC",
     folders: [],
   });
 
@@ -927,12 +977,14 @@ ipcMain.handle(
     const folder = sp.folders.find((f) => f.id === folderId);
     if (folder && bookmark && bookmark.url) {
       const url = formatInputToUrl(bookmark.url, cfg);
+      const cleanTitle =
+        (bookmark.title || "").trim() || url.replace(/^https?:\/\//i, "");
+      const initialBadge = cleanTitle.charAt(0).toUpperCase() || "L";
       folder.bookmarks.push({
         id: "b_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6),
-        title:
-          (bookmark.title || "").trim() || url.replace(/^https?:\/\//i, ""),
+        title: cleanTitle,
         url,
-        icon: (bookmark.icon || "").trim() || "🔗",
+        icon: (bookmark.icon || "").trim() || initialBadge,
       });
       folder.expanded = true;
       saveConfig(cfg);
@@ -983,6 +1035,7 @@ ipcMain.handle(
           url: currentUrl,
           title: currentTitle,
           bookmarkId: bookmark.id,
+          isInternalHome: false,
           reused: true,
         };
       }
@@ -999,7 +1052,6 @@ ipcMain.handle(
   },
 );
 
-// Clore uniquement la vue d'un favori (coupe le son / libère la RAM) sans supprimer le favori
 ipcMain.handle("close-bookmark-view", (_event, bookmarkId) => {
   if (!bookmarkId) return { closed: false, nextTabId: activeTabId };
   const tabId = bookmarkTabMap.get(bookmarkId);
@@ -1025,6 +1077,14 @@ ipcMain.handle("close-bookmark-view", (_event, bookmarkId) => {
 
   return { closed: true, nextTabId };
 });
+
+ipcMain.handle(
+  "close-inactive-space-views",
+  (_event, keepSpaceId = currentSpaceId) => {
+    closeInactiveSpacesTabs(keepSpaceId);
+    return { ok: true };
+  },
+);
 
 ipcMain.handle("switch-space", (_event, spaceId) => {
   const cfg = loadConfig();
@@ -1076,6 +1136,10 @@ ipcMain.handle(
 
 ipcMain.on("switch-tab", (_event, tabId) => {
   suspendedTabId = null;
+  if (isInternalHomeUrl(tabId)) {
+    detachActiveView();
+    return;
+  }
   switchTab(tabId);
 });
 
@@ -1084,12 +1148,32 @@ ipcMain.on("close-tab", (_event, tabId) => {
 });
 
 ipcMain.on("navigate-tab", (_event, { tabId, input }) => {
+  const cfg = loadConfig();
+  const targetUrl = formatInputToUrl(input, cfg);
+
+  if (isInternalHomeUrl(targetUrl)) {
+    detachActiveView();
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("tab-updated", {
+        id: tabId,
+        title: "Accueil",
+        url: "katyn://accueil",
+        bookmarkId: null,
+        canGoBack: false,
+        canGoForward: false,
+      });
+    }
+    return;
+  }
+
   if (tabs.has(tabId)) {
-    const cfg = loadConfig();
     const { view } = tabs.get(tabId);
     if (!view.webContents.isDestroyed()) {
-      view.webContents.loadURL(formatInputToUrl(input, cfg));
+      view.webContents.loadURL(targetUrl);
     }
+  } else {
+    const space = getSpaceById(cfg, currentSpaceId);
+    instantiateTabView({ targetUrl, space, cfg });
   }
 });
 

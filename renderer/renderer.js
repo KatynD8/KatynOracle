@@ -4,22 +4,43 @@ const foldersContainerEl = document.getElementById("folders-container");
 const pinnedGridEl = document.getElementById("pinned-grid");
 const ramMeterEl = document.getElementById("ram-meter");
 const ramMeterTextEl = document.getElementById("ram-meter-text");
+const ramProgressFillEl = document.getElementById("ram-progress-fill");
+const btnSuspendInactive = document.getElementById("btn-suspend-inactive");
+const btnQuickHome = document.getElementById("btn-quick-home");
+const btnToggleSidebarMode = document.getElementById("btn-toggle-sidebar-mode");
+const quickSearchInput = document.getElementById("quick-search-input");
 
 const btnNewTab = document.getElementById("btn-new-tab");
+const btnQuickNewTab = document.getElementById("btn-quick-new-tab");
 const btnNewFolder = document.getElementById("btn-new-folder");
+const btnBookmarkCurrent = document.getElementById("btn-bookmark-current");
+const btnOpenMenu = document.getElementById("btn-open-menu");
 const navForm = document.getElementById("nav-form");
 const urlInput = document.getElementById("url-input");
-const activeTabTitleEl = document.getElementById("active-tab-title");
 
 const btnBack = document.getElementById("btn-back");
 const btnForward = document.getElementById("btn-forward");
 const btnReload = document.getElementById("btn-reload");
 
+const spaceAvatarEl = document.getElementById("space-avatar");
 const currentSpaceBtn = document.getElementById("current-space-btn");
 const currentSpaceLabel = document.getElementById("current-space-label");
 const currentProfileBadge = document.getElementById("current-profile-badge");
-const spaceIndicator = document.getElementById("space-indicator");
 const spacesDropdown = document.getElementById("spaces-dropdown");
+
+const homeDashboardEl = document.getElementById("home-dashboard");
+const webViewFrameEl = document.getElementById("web-view-frame");
+const homeSearchForm = document.getElementById("home-search-form");
+const homeSearchInput = document.getElementById("home-search-input");
+const resumeCardsEl = document.getElementById("resume-cards");
+
+// Menu contextuel
+const contextMenuEl = document.getElementById("context-menu");
+const ctxOpenNewTabBtn = document.getElementById("ctx-open-new-tab");
+const ctxCopyLinkBtn = document.getElementById("ctx-copy-link");
+const ctxAddBookmarkBtn = document.getElementById("ctx-add-bookmark");
+const ctxCloseViewBtn = document.getElementById("ctx-close-view");
+let contextTarget = null;
 
 // Modale de saisie rapide
 const inputModal = document.getElementById("input-modal");
@@ -48,29 +69,37 @@ function askUserInput({
   value2 = "",
   placeholder2 = "https://...",
   showField3 = false,
-  label3 = "Icône (emoji)",
-  value3 = "🔗",
+  label3 = "Icône / badge",
+  value3 = "",
 }) {
   return new Promise((resolve) => {
     resolveInputModal = resolve;
     window.browserAPI.setSettingsOpen(true);
 
     inputModalTitle.textContent = title;
-    inputModalLabel1.querySelector("span").textContent = label1;
+    const span1 = inputModalLabel1.querySelector("span");
+    if (span1) span1.textContent = label1;
     inputModalField1.value = value1;
     inputModalField1.placeholder = placeholder1;
 
     inputModalLabel2.classList.toggle("hidden", !showField2);
-    inputModalLabel2.querySelector("span").textContent = label2;
+    const span2 = inputModalLabel2.querySelector("span");
+    if (span2) span2.textContent = label2;
     inputModalField2.value = value2;
     inputModalField2.placeholder = placeholder2;
 
     inputModalLabel3.classList.toggle("hidden", !showField3);
-    inputModalLabel3.querySelector("span").textContent = label3;
+    const span3 = inputModalLabel3.querySelector("span");
+    if (span3) span3.textContent = label3;
     inputModalField3.value = value3;
 
+    inputModalForm.classList.remove("hidden");
+    inputModalForm.classList.add("active");
     inputModal.classList.remove("hidden");
-    setTimeout(() => inputModalField1.focus(), 20);
+    setTimeout(() => {
+      inputModalField1.focus();
+      inputModalField1.select();
+    }, 20);
   });
 }
 
@@ -135,7 +164,24 @@ let appConfig = null;
 let currentSpaceId = "sp_perso";
 let currentActiveId = null;
 let activeBookmarkId = null;
-const openBookmarkIds = new Set(); // Tous les favoris actuellement ouverts en mémoire
+let isOnHomeView = true;
+const openBookmarkIds = new Set();
+
+function isHomeUrl(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== "string") return false;
+  const clean = rawUrl.trim().toLowerCase();
+  return (
+    clean === "katyn://accueil" ||
+    clean === "katyn://home" ||
+    clean === "about:blank"
+  );
+}
+
+function setHomeDashboardVisible(visible) {
+  isOnHomeView = Boolean(visible);
+  homeDashboardEl.classList.toggle("hidden", !isOnHomeView);
+  webViewFrameEl.classList.toggle("hidden", isOnHomeView);
+}
 
 function formatRamLabel(mb) {
   if (!Number.isFinite(mb) || mb < 0) return "RAM : -- Mo";
@@ -148,12 +194,22 @@ function formatRamLabel(mb) {
 window.browserAPI.onRamStats(({ mb, processCount }) => {
   if (ramMeterTextEl) ramMeterTextEl.textContent = formatRamLabel(mb);
   if (ramMeterEl && typeof processCount === "number") {
-    ramMeterEl.title = `Mémoire utilisée par ${processCount} processus KatynOracle`;
+    ramMeterEl.title = `Mémoire utilisée par ${processCount} processus Katyn Oracle`;
+  }
+  if (ramProgressFillEl && Number.isFinite(mb)) {
+    const pct = Math.max(6, Math.min(100, Math.round((mb / 4096) * 100)));
+    ramProgressFillEl.style.width = `${pct}%`;
+    ramProgressFillEl.classList.remove("is-warn", "is-danger");
+    if (mb >= 3072) {
+      ramProgressFillEl.classList.add("is-danger");
+    } else if (mb >= 1800) {
+      ramProgressFillEl.classList.add("is-warn");
+    }
   }
 });
 
 function extractHostname(rawUrl) {
-  if (!rawUrl || typeof rawUrl !== "string") return "";
+  if (!rawUrl || typeof rawUrl !== "string" || isHomeUrl(rawUrl)) return "";
   const trimmed = rawUrl.trim();
   const withScheme = /^https?:\/\//i.test(trimmed)
     ? trimmed
@@ -166,12 +222,19 @@ function extractHostname(rawUrl) {
   }
 }
 
+function createBadgeFallback(labelText) {
+  const span = document.createElement("span");
+  span.className = "item-letter-badge";
+  span.textContent = (labelText || "L").slice(0, 1).toUpperCase();
+  return span;
+}
+
 function createBookmarkIconElement(bm) {
   const hostname = extractHostname(bm && bm.url);
+  const fallbackLabel = (bm && (bm.icon || bm.title)) || "L";
+
   if (!hostname) {
-    const fallbackSpan = document.createElement("span");
-    fallbackSpan.textContent = (bm && bm.icon) || "🔗";
-    return fallbackSpan;
+    return createBadgeFallback(fallbackLabel);
   }
 
   const img = document.createElement("img");
@@ -187,12 +250,37 @@ function createBookmarkIconElement(bm) {
       img.src = `https://${hostname}/favicon.ico`;
       return;
     }
-    const fallbackSpan = document.createElement("span");
-    fallbackSpan.textContent = (bm && bm.icon) || "🔗";
-    img.replaceWith(fallbackSpan);
+    img.replaceWith(createBadgeFallback(fallbackLabel));
   };
 
   return img;
+}
+
+function renderPinIconSvg(iconKey, title) {
+  const wrap = document.createElement("span");
+  wrap.style.display = "inline-flex";
+  wrap.style.alignItems = "center";
+  wrap.style.justifyContent = "center";
+
+  const svgs = {
+    home: '<svg class="icon-svg" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"></rect><line x1="3" y1="10" x2="21" y2="10"></line></svg>',
+    mail: '<svg class="icon-svg" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"></rect><polyline points="3 7 12 13 21 7"></polyline></svg>',
+    folder:
+      '<svg class="icon-svg" viewBox="0 0 24 24"><path d="M3 6h6l2 2h10v11H3z"></path></svg>',
+    spark:
+      '<svg class="icon-svg" viewBox="0 0 24 24"><polygon points="12 3 14.5 9.5 21 12 14.5 14.5 12 21 9.5 14.5 3 12 9.5 9.5"></polygon></svg>',
+    link: '<svg class="icon-svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"></circle><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>',
+  };
+
+  if (svgs[iconKey]) {
+    wrap.innerHTML = svgs[iconKey];
+    return wrap;
+  }
+
+  wrap.textContent = iconKey || (title ? title.slice(0, 1).toUpperCase() : "◆");
+  wrap.style.fontFamily = "var(--font-mono)";
+  wrap.style.fontSize = "0.82rem";
+  return wrap;
 }
 
 function setModalTab(tabName) {
@@ -205,6 +293,7 @@ function setModalTab(tabName) {
 }
 
 function openSettingsModal(initialTab = "general") {
+  hideContextMenu();
   window.browserAPI.setSettingsOpen(true);
   extErrorMsgEl.classList.add("hidden");
   extErrorMsgEl.textContent = "";
@@ -234,11 +323,11 @@ function getProfileById(profileId) {
 
 function applyGeneralSettingsUI() {
   if (!appConfig || !appConfig.settings) return;
-  const width = Number(appConfig.settings.sidebarWidth) || 260;
+  const width = Number(appConfig.settings.sidebarWidth) || 256;
   sidebarEl.style.width = `${width}px`;
 
   settingSearchEngine.value = appConfig.settings.searchEngine || "google";
-  settingHomeUrl.value = appConfig.settings.homeUrl || "https://www.google.com";
+  settingHomeUrl.value = appConfig.settings.homeUrl || "katyn://accueil";
   settingSidebarWidth.value = width;
 }
 
@@ -248,10 +337,13 @@ function renderSpaceHeaderAndDropdown() {
   const prof = getProfileById(activeSpace.profileId);
 
   currentSpaceLabel.textContent = activeSpace.name;
-  spaceIndicator.style.color = activeSpace.color || "#38bdf8";
+  spaceAvatarEl.textContent = (activeSpace.name || "P")
+    .slice(0, 1)
+    .toUpperCase();
+  spaceAvatarEl.style.borderColor = activeSpace.color || "#8FE3DC";
+  spaceAvatarEl.style.color = activeSpace.color || "#8FE3DC";
 
-  currentProfileBadge.textContent = prof ? prof.name : "Profil";
-  currentProfileBadge.style.color = prof && prof.color ? prof.color : "#94a3b8";
+  currentProfileBadge.textContent = prof ? `Profil ${prof.name}` : "Profil";
 
   spacesDropdown.innerHTML = "";
   appConfig.spaces.forEach((sp) => {
@@ -261,8 +353,8 @@ function renderSpaceHeaderAndDropdown() {
     btn.className = `space-option${sp.id === activeSpace.id ? " active" : ""}`;
 
     const left = document.createElement("span");
-    left.textContent = `● ${sp.name}`;
-    left.style.color = sp.color || "#38bdf8";
+    left.textContent = `◆ ${sp.name}`;
+    left.style.color = sp.color || "#8FE3DC";
 
     const right = document.createElement("span");
     right.className = "profile-badge";
@@ -275,24 +367,80 @@ function renderSpaceHeaderAndDropdown() {
   });
 }
 
+function renderResumeCards() {
+  if (!resumeCardsEl || !appConfig) return;
+  resumeCardsEl.innerHTML = "";
+
+  const candidateSpaces = appConfig.spaces.slice(0, 3);
+  candidateSpaces.forEach((sp) => {
+    const firstBookmark = (sp.folders || []).flatMap(
+      (f) => f.bookmarks || [],
+    )[0];
+
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "resume-card";
+
+    const topLine = document.createElement("div");
+    topLine.className = "resume-card-space";
+    const dot = document.createElement("span");
+    dot.className = "diamond-dot is-filled";
+    dot.style.background = sp.color || "#8FE3DC";
+    dot.style.borderColor = sp.color || "#8FE3DC";
+    const spName = document.createElement("span");
+    spName.textContent = sp.name;
+    topLine.appendChild(dot);
+    topLine.appendChild(spName);
+
+    const titleEl = document.createElement("div");
+    titleEl.className = "resume-card-title";
+    titleEl.textContent = firstBookmark
+      ? `[${firstBookmark.title.toUpperCase()}]`
+      : "[ACCUEIL]";
+
+    const metaEl = document.createElement("div");
+    metaEl.className = "resume-card-meta";
+    metaEl.textContent = firstBookmark
+      ? firstBookmark.url.replace(/^https?:\/\//i, "")
+      : "Espace prêt";
+
+    card.appendChild(topLine);
+    card.appendChild(titleEl);
+    card.appendChild(metaEl);
+
+    card.onclick = async () => {
+      if (sp.id !== currentSpaceId) {
+        await selectSpace(sp.id, false);
+      }
+      if (firstBookmark) {
+        await openOrFocusBookmark(firstBookmark);
+      } else {
+        await navigateToInput("katyn://accueil");
+      }
+    };
+
+    resumeCardsEl.appendChild(card);
+  });
+}
+
 async function promptAddSharedPin() {
   const res = await askUserInput({
-    title: "Nouveau raccourci partagé",
-    label1: "Nom du raccourci",
+    title: "Nouveau raccourci épinglé",
+    label1: "Titre",
     placeholder1: "Ex: GitHub",
     showField2: true,
     label2: "URL",
     placeholder2: "https://github.com",
     showField3: true,
-    label3: "Icône (emoji)",
-    value3: "🔗",
+    label3: "Icône ou lettre",
+    value3: "link",
   });
   if (!res || !res.field2 || !res.field2.trim()) return;
 
   appConfig = await window.browserAPI.addSharedPin({
     title: res.field1.trim(),
     url: res.field2.trim(),
-    icon: (res.field3 || "🔗").trim(),
+    icon: (res.field3 || "link").trim(),
     incognito: false,
   });
   renderSharedPins();
@@ -306,29 +454,23 @@ function renderSharedPins() {
       ? appConfig.sharedPins
       : [];
 
-  pins.forEach((pin) => {
+  pins.slice(0, 4).forEach((pin) => {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "pin-card";
-    if (pin.action === "open-extensions") {
-      btn.title = "Gérer les extensions";
-      btn.textContent = pin.icon || "🧩";
-      btn.onclick = () => openSettingsModal("extensions");
-    } else {
-      btn.title = pin.incognito
-        ? `${pin.title} (Navigation privée)`
-        : `${pin.title} (${pin.url})`;
-      btn.textContent = pin.icon || "🔗";
-      btn.onclick = () =>
-        addTab(pin.url, currentSpaceId, { incognito: Boolean(pin.incognito) });
-    }
+    btn.title = pin.incognito ? `${pin.title} (Privé)` : `${pin.title}`;
+    btn.appendChild(renderPinIconSvg(pin.icon, pin.title));
+    btn.onclick = () =>
+      navigateToInput(pin.url, { incognito: Boolean(pin.incognito) });
+    btn.oncontextmenu = (e) =>
+      showContextMenu(e, { url: pin.url, title: pin.title });
     pinnedGridEl.appendChild(btn);
   });
 
   const addBtn = document.createElement("button");
   addBtn.type = "button";
   addBtn.className = "pin-card pin-card-add";
-  addBtn.title = "Ajouter un raccourci partagé";
+  addBtn.title = "Ajouter un raccourci épinglé";
   addBtn.textContent = "+";
   addBtn.onclick = promptAddSharedPin;
   pinnedGridEl.appendChild(addBtn);
@@ -364,6 +506,26 @@ function updateBookmarkStates() {
   });
 }
 
+function applySidebarFilter() {
+  const q = (quickSearchInput ? quickSearchInput.value : "")
+    .trim()
+    .toLowerCase();
+
+  document.querySelectorAll(".bookmark-item").forEach((item) => {
+    const label = (item.dataset.title || "").toLowerCase();
+    const url = (item.dataset.url || "").toLowerCase();
+    item.style.display =
+      !q || label.includes(q) || url.includes(q) ? "" : "none";
+  });
+
+  document.querySelectorAll(".tab-item").forEach((item) => {
+    const label = (item.dataset.title || "").toLowerCase();
+    const url = (item.dataset.url || "").toLowerCase();
+    item.style.display =
+      !q || label.includes(q) || url.includes(q) ? "" : "none";
+  });
+}
+
 async function closeActiveBookmarkView(bookmarkId) {
   if (!bookmarkId) return;
   openBookmarkIds.delete(bookmarkId);
@@ -381,13 +543,13 @@ async function closeActiveBookmarkView(bookmarkId) {
     );
     if (tabEl) {
       setActiveTab(res.nextTabId);
+      setHomeDashboardVisible(isHomeUrl(tabEl.dataset.url));
       syncTopBarWithTab(tabEl.dataset.title, tabEl.dataset.url);
-    } else {
-      syncTopBarWithTab("Nouvel onglet", "");
     }
   } else {
     currentActiveId = null;
-    syncTopBarWithTab("Onglet clos", "");
+    setHomeDashboardVisible(true);
+    syncTopBarWithTab("Accueil", "katyn://accueil");
   }
 }
 
@@ -402,6 +564,7 @@ async function openOrFocusBookmark(bm) {
   if (!tab) return;
 
   currentActiveId = tab.id;
+  setHomeDashboardVisible(Boolean(tab.isInternalHome) || isHomeUrl(tab.url));
   syncTopBarWithTab(tab.title || bm.title, tab.url || bm.url);
 }
 
@@ -410,7 +573,7 @@ function renderFolders() {
   foldersContainerEl.innerHTML = "";
   if (!activeSpace) return;
 
-  (activeSpace.folders || []).forEach((folder) => {
+  (activeSpace.folders || []).forEach((folder, index) => {
     const folderBlock = document.createElement("div");
     folderBlock.className = `folder-block${folder.expanded ? "" : " is-collapsed"}`;
 
@@ -424,18 +587,30 @@ function renderFolders() {
     arrow.className = "folder-arrow";
     arrow.textContent = folder.expanded ? "▾" : "▸";
 
-    const icon = document.createElement("span");
-    icon.textContent = "📁";
+    const diamond = document.createElement("span");
+    diamond.className = "diamond-dot is-filled";
+    const palette = ["#F2B8D0", "#F5C6A5", "#8FE3DC", "#B8B4F8"];
+    const dotColor = palette[index % palette.length];
+    diamond.style.background = dotColor;
+    diamond.style.borderColor = dotColor;
 
     const nameSpan = document.createElement("span");
+    nameSpan.className = "folder-name-text";
     nameSpan.textContent = folder.name;
 
     titleWrap.appendChild(arrow);
-    titleWrap.appendChild(icon);
+    titleWrap.appendChild(diamond);
     titleWrap.appendChild(nameSpan);
 
     const actions = document.createElement("div");
     actions.className = "folder-actions";
+
+    if ((folder.bookmarks || []).length > 0) {
+      const countSpan = document.createElement("span");
+      countSpan.className = "folder-count";
+      countSpan.textContent = String(folder.bookmarks.length);
+      actions.appendChild(countSpan);
+    }
 
     const addBtn = document.createElement("button");
     addBtn.type = "button";
@@ -446,7 +621,7 @@ function renderFolders() {
       e.stopPropagation();
       const res = await askUserInput({
         title: `Ajouter un lien — ${folder.name}`,
-        label1: "Nom du raccourci",
+        label1: "Nom du lien",
         placeholder1: "Ex: Reddit",
         showField2: true,
         label2: "URL",
@@ -463,17 +638,18 @@ function renderFolders() {
         },
       );
       renderFolders();
+      renderResumeCards();
     };
 
     const renameBtn = document.createElement("button");
     renameBtn.type = "button";
     renameBtn.className = "folder-action-btn";
-    renameBtn.title = "Renommer le dossier";
+    renameBtn.title = "Renommer";
     renameBtn.textContent = "✎";
     renameBtn.onclick = async (e) => {
       e.stopPropagation();
       const res = await askUserInput({
-        title: "Renommer le dossier",
+        title: "Renommer",
         label1: "Nouveau nom",
         value1: folder.name,
       });
@@ -489,8 +665,8 @@ function renderFolders() {
     const delFolderBtn = document.createElement("button");
     delFolderBtn.type = "button";
     delFolderBtn.className = "folder-action-btn";
-    delFolderBtn.title = "Supprimer le dossier";
-    delFolderBtn.textContent = "🗑";
+    delFolderBtn.title = "Supprimer";
+    delFolderBtn.textContent = "✕";
     delFolderBtn.onclick = async (e) => {
       e.stopPropagation();
       appConfig = await window.browserAPI.deleteFolder(
@@ -498,6 +674,7 @@ function renderFolders() {
         folder.id,
       );
       renderFolders();
+      renderResumeCards();
     };
 
     actions.appendChild(addBtn);
@@ -525,6 +702,8 @@ function renderFolders() {
       const item = document.createElement("div");
       item.className = `bookmark-item${isOpen ? " is-open" : ""}${isCurrent ? " active" : ""}`;
       item.dataset.bookmarkId = bm.id;
+      item.dataset.title = bm.title;
+      item.dataset.url = bm.url;
       item.title = bm.url;
 
       const mainPart = document.createElement("div");
@@ -539,8 +718,8 @@ function renderFolders() {
       mainPart.appendChild(bmIconEl);
       mainPart.appendChild(bmTitle);
 
-      const bmActions = document.createElement("div");
-      bmActions.className = "bookmark-actions";
+      const bmRight = document.createElement("div");
+      bmRight.className = "bookmark-right";
 
       const closeViewBtn = document.createElement("button");
       closeViewBtn.type = "button";
@@ -556,7 +735,7 @@ function renderFolders() {
       const delBtn = document.createElement("button");
       delBtn.type = "button";
       delBtn.className = "bookmark-del";
-      delBtn.title = "Supprimer ce lien du dossier";
+      delBtn.title = "Supprimer ce lien";
       delBtn.textContent = "✕";
       delBtn.onclick = async (e) => {
         e.stopPropagation();
@@ -569,14 +748,25 @@ function renderFolders() {
           bm.id,
         );
         renderFolders();
+        renderResumeCards();
       };
 
-      bmActions.appendChild(closeViewBtn);
-      bmActions.appendChild(delBtn);
+      const openDiamond = document.createElement("span");
+      openDiamond.className = `diamond-dot${isOpen ? " is-filled" : ""}`;
+      if (isOpen) {
+        openDiamond.style.background = dotColor;
+        openDiamond.style.borderColor = dotColor;
+      }
+
+      bmRight.appendChild(closeViewBtn);
+      bmRight.appendChild(delBtn);
+      bmRight.appendChild(openDiamond);
 
       item.appendChild(mainPart);
-      item.appendChild(bmActions);
+      item.appendChild(bmRight);
       item.onclick = () => openOrFocusBookmark(bm);
+      item.oncontextmenu = (e) =>
+        showContextMenu(e, { url: bm.url, title: bm.title, bookmarkId: bm.id });
 
       listEl.appendChild(item);
     });
@@ -586,12 +776,13 @@ function renderFolders() {
     syncPinnedActiveBookmarks(folderBlock, listEl);
     foldersContainerEl.appendChild(folderBlock);
   });
+
+  applySidebarFilter();
 }
 
 function syncTopBarWithTab(title, url, canGoBack = null, canGoForward = null) {
-  const cleanTitle = title || "Nouvel onglet";
-  activeTabTitleEl.textContent = cleanTitle;
-  activeTabTitleEl.title = cleanTitle;
+  const cleanTitle = title || "Accueil";
+  document.title = `${cleanTitle} — Katyn Oracle`;
   if (
     url &&
     !url.startsWith("chrome-error://") &&
@@ -627,6 +818,11 @@ function renderTabElement(id, title, isActive = false, url = "") {
     e.stopPropagation();
     window.browserAPI.closeTab(id);
     li.remove();
+    if (!tabsListEl.querySelector(".tab-item")) {
+      currentActiveId = null;
+      setHomeDashboardVisible(true);
+      syncTopBarWithTab("Accueil", "katyn://accueil");
+    }
   };
 
   li.appendChild(span);
@@ -636,10 +832,18 @@ function renderTabElement(id, title, isActive = false, url = "") {
     updateBookmarkStates();
     window.browserAPI.switchTab(id);
     setActiveTab(id);
+    setHomeDashboardVisible(isHomeUrl(li.dataset.url));
     syncTopBarWithTab(li.dataset.title, li.dataset.url);
   };
+  li.oncontextmenu = (e) =>
+    showContextMenu(e, {
+      url: li.dataset.url,
+      title: li.dataset.title,
+      tabId: id,
+    });
 
   tabsListEl.appendChild(li);
+  applySidebarFilter();
 }
 
 function setActiveTab(id) {
@@ -649,7 +853,28 @@ function setActiveTab(id) {
   });
 }
 
-async function selectSpace(spaceId) {
+async function navigateToInput(rawInput, options = {}) {
+  const trimmed = (rawInput || "").trim();
+  const homePref =
+    (appConfig && appConfig.settings && appConfig.settings.homeUrl) ||
+    "katyn://accueil";
+  const target = trimmed || homePref;
+
+  if (isHomeUrl(target) && !options.incognito) {
+    activeBookmarkId = null;
+    updateBookmarkStates();
+    setActiveTab(null);
+    currentActiveId = "home_view";
+    window.browserAPI.switchTab("katyn://accueil");
+    setHomeDashboardVisible(true);
+    syncTopBarWithTab("Accueil", "katyn://accueil");
+    return;
+  }
+
+  await addTab(target, currentSpaceId, options);
+}
+
+async function selectSpace(spaceId, openHomeIfEmpty = true) {
   currentSpaceId = spaceId;
   activeBookmarkId = null;
   openBookmarkIds.clear();
@@ -657,21 +882,13 @@ async function selectSpace(spaceId) {
   renderSpaceHeaderAndDropdown();
   renderSharedPins();
   renderFolders();
+  renderResumeCards();
 
   tabsListEl.innerHTML = "";
   currentActiveId = null;
 
   const state = await window.browserAPI.switchSpace(spaceId);
-  const homeUrl =
-    (appConfig && appConfig.settings && appConfig.settings.homeUrl) ||
-    "https://www.google.com";
-
   const regularTabs = (state.tabs || []).filter((t) => !t.bookmarkId);
-
-  if (regularTabs.length === 0 && !state.activeTabId) {
-    await addTab(homeUrl, spaceId);
-    return;
-  }
 
   for (const tab of regularTabs) {
     renderTabElement(tab.id, tab.title, tab.id === state.activeTabId, tab.url);
@@ -687,11 +904,18 @@ async function selectSpace(spaceId) {
       updateBookmarkStates();
       currentActiveId = activeTabObj.id;
       setActiveTab(null);
+      setHomeDashboardVisible(isHomeUrl(activeTabObj.url));
       syncTopBarWithTab(activeTabObj.title, activeTabObj.url);
     } else {
       setActiveTab(state.activeTabId);
-      if (activeTabObj) syncTopBarWithTab(activeTabObj.title, activeTabObj.url);
+      if (activeTabObj) {
+        setHomeDashboardVisible(isHomeUrl(activeTabObj.url));
+        syncTopBarWithTab(activeTabObj.title, activeTabObj.url);
+      }
     }
+  } else if (openHomeIfEmpty) {
+    setHomeDashboardVisible(true);
+    syncTopBarWithTab("Accueil", "katyn://accueil");
   }
 }
 
@@ -701,15 +925,23 @@ async function addTab(url, spaceId = currentSpaceId, options = {}) {
 
   const homeUrl =
     (appConfig && appConfig.settings && appConfig.settings.homeUrl) ||
-    "https://www.google.com";
-  const tab = await window.browserAPI.createTab(
-    url || homeUrl,
-    spaceId,
-    options,
-  );
+    "katyn://accueil";
+  const target = url || homeUrl;
+
+  if (isHomeUrl(target) && !options.incognito) {
+    setActiveTab(null);
+    currentActiveId = "home_view";
+    window.browserAPI.switchTab("katyn://accueil");
+    setHomeDashboardVisible(true);
+    syncTopBarWithTab("Accueil", "katyn://accueil");
+    return;
+  }
+
+  const tab = await window.browserAPI.createTab(target, spaceId, options);
   const initialTitle = tab.title || "Chargement...";
   renderTabElement(tab.id, initialTitle, true, tab.url || "");
   setActiveTab(tab.id);
+  setHomeDashboardVisible(Boolean(tab.isInternalHome) || isHomeUrl(tab.url));
   syncTopBarWithTab(initialTitle, tab.url || "");
 }
 
@@ -718,25 +950,159 @@ async function closeCurrentTab() {
     await closeActiveBookmarkView(activeBookmarkId);
     return;
   }
-  if (!currentActiveId) return;
+  if (!currentActiveId || currentActiveId === "home_view") {
+    setHomeDashboardVisible(true);
+    syncTopBarWithTab("Accueil", "katyn://accueil");
+    return;
+  }
   const tabEl = document.querySelector(
     `.tab-item[data-tab-id="${currentActiveId}"]`,
   );
   window.browserAPI.closeTab(currentActiveId);
   if (tabEl) tabEl.remove();
+  if (!tabsListEl.querySelector(".tab-item")) {
+    currentActiveId = null;
+    setHomeDashboardVisible(true);
+    syncTopBarWithTab("Accueil", "katyn://accueil");
+  }
 }
 
+function hideContextMenu() {
+  contextMenuEl.classList.add("hidden");
+  contextTarget = null;
+}
+
+function showContextMenu(e, itemInfo) {
+  e.preventDefault();
+  e.stopPropagation();
+  contextTarget = itemInfo;
+
+  const menuW = 220;
+  const menuH = 140;
+  const x = Math.min(window.innerWidth - menuW - 8, Math.max(8, e.clientX));
+  const y = Math.min(window.innerHeight - menuH - 8, Math.max(8, e.clientY));
+
+  contextMenuEl.style.left = `${x}px`;
+  contextMenuEl.style.top = `${y}px`;
+  contextMenuEl.classList.remove("hidden");
+}
+
+ctxOpenNewTabBtn.addEventListener("click", async () => {
+  if (contextTarget && contextTarget.url) {
+    await addTab(contextTarget.url, currentSpaceId);
+  }
+  hideContextMenu();
+});
+
+ctxCopyLinkBtn.addEventListener("click", () => {
+  if (contextTarget && contextTarget.url) {
+    window.browserAPI.copyText(contextTarget.url);
+  }
+  hideContextMenu();
+});
+
+ctxAddBookmarkBtn.addEventListener("click", async () => {
+  const activeSpace = getActiveSpace();
+  const targetUrl =
+    (contextTarget && contextTarget.url) || urlInput.value.trim();
+  const targetTitle =
+    (contextTarget && contextTarget.title) ||
+    document.title.replace(/\s*—\s*Katyn Oracle$/i, "");
+  hideContextMenu();
+
+  if (!activeSpace || !targetUrl || isHomeUrl(targetUrl)) return;
+  let folder = activeSpace.folders && activeSpace.folders[0];
+  if (!folder) {
+    appConfig = await window.browserAPI.addFolder(activeSpace.id, "Favoris");
+    folder = appConfig.spaces.find((s) => s.id === activeSpace.id).folders[0];
+  }
+  appConfig = await window.browserAPI.addBookmark(activeSpace.id, folder.id, {
+    title: targetTitle,
+    url: targetUrl,
+  });
+  renderFolders();
+  renderResumeCards();
+});
+
+ctxCloseViewBtn.addEventListener("click", async () => {
+  if (contextTarget && contextTarget.bookmarkId) {
+    await closeActiveBookmarkView(contextTarget.bookmarkId);
+  } else if (contextTarget && contextTarget.tabId) {
+    window.browserAPI.closeTab(contextTarget.tabId);
+    const el = document.querySelector(
+      `.tab-item[data-tab-id="${contextTarget.tabId}"]`,
+    );
+    if (el) el.remove();
+  }
+  hideContextMenu();
+});
+
 btnBack.addEventListener("click", () => {
-  if (currentActiveId) window.browserAPI.goBack(currentActiveId);
+  if (currentActiveId && currentActiveId !== "home_view") {
+    window.browserAPI.goBack(currentActiveId);
+  }
 });
 
 btnForward.addEventListener("click", () => {
-  if (currentActiveId) window.browserAPI.goForward(currentActiveId);
+  if (currentActiveId && currentActiveId !== "home_view") {
+    window.browserAPI.goForward(currentActiveId);
+  }
 });
 
 btnReload.addEventListener("click", () => {
-  if (currentActiveId) window.browserAPI.reload(currentActiveId);
+  if (isOnHomeView) {
+    setHomeDashboardVisible(true);
+    return;
+  }
+  if (currentActiveId && currentActiveId !== "home_view") {
+    window.browserAPI.reload(currentActiveId);
+  }
 });
+
+btnQuickHome.addEventListener("click", () =>
+  navigateToInput("katyn://accueil"),
+);
+btnBookmarkCurrent.addEventListener("click", async () => {
+  const activeSpace = getActiveSpace();
+  const currentUrl = urlInput.value.trim();
+  if (!activeSpace || !currentUrl || isHomeUrl(currentUrl)) return;
+  let folder = activeSpace.folders && activeSpace.folders[0];
+  if (!folder) {
+    appConfig = await window.browserAPI.addFolder(activeSpace.id, "Favoris");
+    folder = appConfig.spaces.find((s) => s.id === activeSpace.id).folders[0];
+  }
+  const pageTitle =
+    document.title.replace(/\s*—\s*Katyn Oracle$/i, "").trim() || currentUrl;
+  appConfig = await window.browserAPI.addBookmark(activeSpace.id, folder.id, {
+    title: pageTitle,
+    url: currentUrl,
+  });
+  renderFolders();
+  renderResumeCards();
+});
+
+btnOpenMenu.addEventListener("click", () => openSettingsModal("general"));
+btnQuickNewTab.addEventListener("click", () =>
+  addTab("katyn://accueil", currentSpaceId),
+);
+
+btnSuspendInactive.addEventListener("click", async () => {
+  await window.browserAPI.closeInactiveSpaceViews(currentSpaceId);
+});
+
+btnToggleSidebarMode.addEventListener("click", () => {
+  const activeSpace = getActiveSpace();
+  if (!activeSpace || !Array.isArray(activeSpace.folders)) return;
+  const anyExpanded = activeSpace.folders.some((f) => f.expanded);
+  activeSpace.folders.forEach((f) => {
+    f.expanded = !anyExpanded;
+  });
+  renderFolders();
+});
+
+if (quickSearchInput) {
+  quickSearchInput.addEventListener("input", applySidebarFilter);
+}
 
 function renderSettingsModalPanels() {
   if (!appConfig) return;
@@ -756,14 +1122,14 @@ function renderSettingsModalPanels() {
 
     const info = document.createElement("div");
     info.className = "config-row-info";
-    info.innerHTML = `<span style="color:${prof.color || "#38bdf8"}">●</span> <strong>${prof.name}</strong>`;
+    info.innerHTML = `<span style="color:${prof.color || "#B8B4F8"}">◆</span> <strong>${prof.name}</strong>`;
 
     const actions = document.createElement("div");
     actions.className = "config-row-actions";
 
     const renameBtn = document.createElement("button");
     renameBtn.type = "button";
-    renameBtn.className = "btn-mini";
+    renameBtn.className = "btn-mini-pill";
     renameBtn.textContent = "Renommer";
     renameBtn.onclick = async () => {
       const res = await askUserInput({
@@ -809,14 +1175,14 @@ function renderSettingsModalPanels() {
 
     const info = document.createElement("div");
     info.className = "config-row-info";
-    info.innerHTML = `<span style="color:${sp.color || "#38bdf8"}">●</span> <strong>${sp.name}</strong> <span class="profile-badge">${spProf ? spProf.name : ""}</span>`;
+    info.innerHTML = `<span style="color:${sp.color || "#8FE3DC"}">◆</span> <strong>${sp.name}</strong> <span class="profile-badge">${spProf ? spProf.name : ""}</span>`;
 
     const actions = document.createElement("div");
     actions.className = "config-row-actions";
 
     const renameBtn = document.createElement("button");
     renameBtn.type = "button";
-    renameBtn.className = "btn-mini";
+    renameBtn.className = "btn-mini-pill";
     renameBtn.textContent = "Modifier";
     renameBtn.onclick = async () => {
       const res = await askUserInput({
@@ -832,6 +1198,7 @@ function renderSettingsModalPanels() {
         sp.color,
       );
       renderSpaceHeaderAndDropdown();
+      renderResumeCards();
       renderSettingsModalPanels();
     };
 
@@ -848,6 +1215,7 @@ function renderSettingsModalPanels() {
           await selectSpace(appConfig.spaces[0].id);
         } else {
           renderSpaceHeaderAndDropdown();
+          renderResumeCards();
         }
         renderSettingsModalPanels();
       };
@@ -866,12 +1234,7 @@ function renderSettingsModalPanels() {
 
     const info = document.createElement("div");
     info.className = "config-row-info";
-    const tag = pin.incognito
-      ? " [Privé]"
-      : pin.action === "open-extensions"
-        ? " [Extensions]"
-        : "";
-    info.textContent = `${pin.icon || "🔗"} ${pin.title}${tag}${pin.url ? " — " + pin.url : ""}`;
+    info.textContent = `${pin.icon || "◆"} ${pin.title}${pin.url ? " — " + pin.url : ""}`;
 
     const delBtn = document.createElement("button");
     delBtn.type = "button";
@@ -904,7 +1267,7 @@ function renderSettingsModalPanels() {
       info.className = "config-row-info";
       info.title = ext.path;
       const verText = ext.version ? ` v${ext.version}` : "";
-      info.innerHTML = `🧩 <strong>${ext.name || "Extension"}${verText}</strong> <span class="helper-text">${ext.path}</span>`;
+      info.innerHTML = `<strong>${ext.name || "Extension"}${verText}</strong> <span class="helper-text">${ext.path}</span>`;
 
       const delBtn = document.createElement("button");
       delBtn.type = "button";
@@ -959,8 +1322,8 @@ btnAddExt.addEventListener("click", async () => {
 btnSaveGeneral.addEventListener("click", async () => {
   appConfig = await window.browserAPI.updateSettings({
     searchEngine: settingSearchEngine.value,
-    homeUrl: settingHomeUrl.value.trim() || "https://www.google.com",
-    sidebarWidth: Number(settingSidebarWidth.value) || 260,
+    homeUrl: settingHomeUrl.value.trim() || "katyn://accueil",
+    sidebarWidth: Number(settingSidebarWidth.value) || 256,
   });
   applyGeneralSettingsUI();
   closeSettingsModal();
@@ -985,6 +1348,7 @@ btnAddSpace.addEventListener("click", async () => {
   );
   newSpaceNameEl.value = "";
   renderSpaceHeaderAndDropdown();
+  renderResumeCards();
   renderSettingsModalPanels();
 });
 
@@ -992,7 +1356,7 @@ btnAddPin.addEventListener("click", async () => {
   const url = newPinUrlEl.value.trim();
   if (!url) return;
   appConfig = await window.browserAPI.addSharedPin({
-    icon: newPinIconEl.value.trim() || "🔗",
+    icon: newPinIconEl.value.trim() || "link",
     title: newPinTitleEl.value.trim(),
     url,
     incognito: false,
@@ -1011,13 +1375,14 @@ currentSpaceBtn.addEventListener("click", (e) => {
 
 document.addEventListener("click", () => {
   spacesDropdown.classList.add("hidden");
+  hideContextMenu();
 });
 
 btnNewFolder.addEventListener("click", async () => {
   const res = await askUserInput({
-    title: "Nouveau dossier",
-    label1: "Nom du dossier",
-    placeholder1: "Ex: Dev, IA, Inspi",
+    title: "Nouveau dossier / espace",
+    label1: "Nom",
+    placeholder1: "Ex: Social Media, Stream, Dev",
   });
   if (!res || !res.field1 || !res.field1.trim()) return;
   const activeSpace = getActiveSpace();
@@ -1026,41 +1391,67 @@ btnNewFolder.addEventListener("click", async () => {
     res.field1.trim(),
   );
   renderFolders();
+  renderResumeCards();
 });
 
 btnNewTab.addEventListener("click", () => {
-  const homeUrl =
-    (appConfig && appConfig.settings && appConfig.settings.homeUrl) ||
-    "https://www.google.com";
-  addTab(homeUrl, currentSpaceId);
+  addTab("katyn://accueil", currentSpaceId);
 });
 
-navForm.addEventListener("submit", (e) => {
+navForm.addEventListener("submit", async (e) => {
   e.preventDefault();
-  if (currentActiveId && urlInput.value) {
-    window.browserAPI.navigate(currentActiveId, urlInput.value);
-    urlInput.blur();
+  if (!urlInput.value.trim()) return;
+  if (
+    currentActiveId &&
+    currentActiveId !== "home_view" &&
+    !isHomeUrl(urlInput.value)
+  ) {
+    window.browserAPI.navigate(currentActiveId, { input: urlInput.value });
+  } else {
+    await navigateToInput(urlInput.value);
   }
+  urlInput.blur();
 });
+
+if (homeSearchForm && homeSearchInput) {
+  homeSearchForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const val = homeSearchInput.value.trim();
+    if (!val) return;
+    await navigateToInput(val);
+    homeSearchInput.value = "";
+  });
+}
 
 window.browserAPI.onShortcut((action) => {
   if (action === "new-tab") {
-    const homeUrl =
-      (appConfig && appConfig.settings && appConfig.settings.homeUrl) ||
-      "https://www.google.com";
-    addTab(homeUrl, currentSpaceId);
+    addTab("katyn://accueil", currentSpaceId);
   } else if (action === "close-tab") {
     closeCurrentTab();
   } else if (action === "focus-url") {
-    urlInput.focus();
-    urlInput.select();
+    if (isOnHomeView && homeSearchInput) {
+      homeSearchInput.focus();
+      homeSearchInput.select();
+    } else {
+      urlInput.focus();
+      urlInput.select();
+    }
+  } else if (action === "quick-search") {
+    if (quickSearchInput) {
+      quickSearchInput.focus();
+      quickSearchInput.select();
+    }
   } else if (action === "reload") {
-    if (currentActiveId) window.browserAPI.reload(currentActiveId);
+    if (!isOnHomeView && currentActiveId && currentActiveId !== "home_view") {
+      window.browserAPI.reload(currentActiveId);
+    }
   } else if (action === "escape") {
     if (!inputModal.classList.contains("hidden")) {
       finishInputModal(null);
     } else if (!settingsModal.classList.contains("hidden")) {
       closeSettingsModal();
+    } else if (!contextMenuEl.classList.contains("hidden")) {
+      hideContextMenu();
     } else {
       spacesDropdown.classList.add("hidden");
     }
@@ -1085,6 +1476,7 @@ window.browserAPI.onTabUpdated(
       id === currentActiveId ||
       (bookmarkId && bookmarkId === activeBookmarkId)
     ) {
+      setHomeDashboardVisible(isHomeUrl(url));
       syncTopBarWithTab(safeTitle, url, canGoBack, canGoForward);
     }
   },
@@ -1094,6 +1486,7 @@ window.browserAPI.onTabSelected((id) => {
   setActiveTab(id);
   const tabEl = document.querySelector(`.tab-item[data-tab-id="${id}"]`);
   if (tabEl) {
+    setHomeDashboardVisible(isHomeUrl(tabEl.dataset.url));
     syncTopBarWithTab(tabEl.dataset.title, tabEl.dataset.url);
   }
 });
@@ -1107,9 +1500,14 @@ window.browserAPI.onTabSelected((id) => {
   renderSpaceHeaderAndDropdown();
   renderSharedPins();
   renderFolders();
+  renderResumeCards();
 
-  const homeUrl =
-    (appConfig.settings && appConfig.settings.homeUrl) ||
-    "https://www.google.com";
-  await addTab(homeUrl, currentSpaceId);
+  const homePref =
+    (appConfig.settings && appConfig.settings.homeUrl) || "katyn://accueil";
+  if (isHomeUrl(homePref)) {
+    setHomeDashboardVisible(true);
+    syncTopBarWithTab("Accueil", "katyn://accueil");
+  } else {
+    await addTab(homePref, currentSpaceId);
+  }
 })();
