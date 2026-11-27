@@ -8,6 +8,7 @@ const {
   dialog,
   globalShortcut,
   clipboard,
+  shell,
 } = require("electron");
 const path = require("path");
 const fs = require("fs");
@@ -27,10 +28,13 @@ let cachedConfig = null;
 const tabs = new Map(); // id -> { view, spaceId, partition, bookmarkId, isIncognito }
 const bookmarkTabMap = new Map(); // bookmarkId -> tabId
 const adblockInstalledSessions = new WeakSet();
+const downloadListenersInstalled = new WeakSet();
+const activeDownloads = new Map(); // id -> { item, savePath, filename, receivedBytes, totalBytes, state }
 
 let activeTabId = null;
 let suspendedTabId = null;
 let currentSpaceId = "sp_perso";
+let isSidebarHidden = false;
 
 const VIEW_MARGIN = 8;
 const TOPBAR_HEIGHT = 44;
@@ -144,26 +148,84 @@ function shouldBlockUrl(rawUrl, cfg = loadConfig()) {
   return false;
 }
 
-function installNativeAdblockerOnSession(targetSession) {
+function emitDownloadProgress(dlEntry) {
   if (
-    !targetSession ||
-    !targetSession.webRequest ||
-    adblockInstalledSessions.has(targetSession)
-  ) {
+    !mainWindow ||
+    mainWindow.isDestroyed() ||
+    mainWindow.webContents.isDestroyed()
+  )
     return;
-  }
-  adblockInstalledSessions.add(targetSession);
+  mainWindow.webContents.send("download-update", {
+    id: dlEntry.id,
+    filename: dlEntry.filename,
+    savePath: dlEntry.savePath,
+    receivedBytes: dlEntry.receivedBytes,
+    totalBytes: dlEntry.totalBytes,
+    state: dlEntry.state,
+  });
+}
 
-  targetSession.webRequest.onBeforeRequest(
-    { urls: ["<all_urls>"] },
-    (details, callback) => {
-      if (shouldBlockUrl(details.url)) {
-        callback({ cancel: true });
-        return;
+function installSessionHooks(targetSession) {
+  if (!targetSession) return;
+
+  if (
+    targetSession.webRequest &&
+    !adblockInstalledSessions.has(targetSession)
+  ) {
+    adblockInstalledSessions.add(targetSession);
+    targetSession.webRequest.onBeforeRequest(
+      { urls: ["<all_urls>"] },
+      (details, callback) => {
+        if (shouldBlockUrl(details.url)) {
+          callback({ cancel: true });
+          return;
+        }
+        callback({});
+      },
+    );
+  }
+
+  if (!downloadListenersInstalled.has(targetSession)) {
+    downloadListenersInstalled.add(targetSession);
+    targetSession.on("will-download", (_event, item) => {
+      const dlId =
+        "dl_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6);
+      const filename = item.getFilename() || "fichier";
+      const downloadsDir = app.getPath("downloads");
+      const savePath = item.getSavePath() || path.join(downloadsDir, filename);
+      if (!item.getSavePath()) {
+        item.setSavePath(savePath);
       }
-      callback({});
-    },
-  );
+
+      const entry = {
+        id: dlId,
+        item,
+        filename,
+        savePath: item.getSavePath() || savePath,
+        receivedBytes: item.getReceivedBytes() || 0,
+        totalBytes: item.getTotalBytes() || 0,
+        state: "progressing",
+      };
+      activeDownloads.set(dlId, entry);
+      emitDownloadProgress(entry);
+
+      item.on("updated", (_ev, state) => {
+        entry.receivedBytes = item.getReceivedBytes() || 0;
+        entry.totalBytes = item.getTotalBytes() || entry.totalBytes;
+        entry.savePath = item.getSavePath() || entry.savePath;
+        entry.state = state === "interrupted" ? "interrupted" : "progressing";
+        emitDownloadProgress(entry);
+      });
+
+      item.once("done", (_ev, state) => {
+        entry.receivedBytes = item.getReceivedBytes() || entry.receivedBytes;
+        entry.totalBytes = item.getTotalBytes() || entry.totalBytes;
+        entry.savePath = item.getSavePath() || entry.savePath;
+        entry.state = state;
+        emitDownloadProgress(entry);
+      });
+    });
+  }
 }
 
 const SEARCH_ENGINES = {
@@ -210,6 +272,7 @@ const DEFAULT_CONFIG = {
     homeUrl: "katyn://accueil",
     sidebarWidth: 224,
     blockTrackers: true,
+    sidebarHidden: false,
   },
   sharedPins: DEFAULT_SHARED_PINS,
   extensions: [],
@@ -381,6 +444,9 @@ function normalizeConfig(raw) {
   if (typeof cfg.settings.blockTrackers !== "boolean") {
     cfg.settings.blockTrackers = true;
   }
+  if (typeof cfg.settings.sidebarHidden !== "boolean") {
+    cfg.settings.sidebarHidden = false;
+  }
 
   const validProfileIds = new Set(cfg.profiles.map((p) => p.id));
   const fallbackProfileId = cfg.profiles[0].id;
@@ -415,6 +481,7 @@ function loadConfig(forceReload = false) {
     if (fs.existsSync(filePath)) {
       const parsed = JSON.parse(fs.readFileSync(filePath, "utf-8"));
       cachedConfig = normalizeConfig(parsed);
+      isSidebarHidden = Boolean(cachedConfig.settings.sidebarHidden);
       return cachedConfig;
     }
   } catch (err) {
@@ -422,6 +489,7 @@ function loadConfig(forceReload = false) {
   }
 
   cachedConfig = normalizeConfig(DEFAULT_CONFIG);
+  isSidebarHidden = Boolean(cachedConfig.settings.sidebarHidden);
   saveConfig(cachedConfig, false);
   return cachedConfig;
 }
@@ -448,9 +516,14 @@ function getSidebarWidth(cfg) {
   return Math.max(200, Math.min(420, Math.round(w)));
 }
 
+function getEffectiveSidebarWidth(cfg = loadConfig()) {
+  if (isSidebarHidden) return 0;
+  return getSidebarWidth(cfg);
+}
+
 function applyBoundsToView(view, cfg = loadConfig()) {
   if (!view || !mainWindow || mainWindow.isDestroyed()) return;
-  const sidebarWidth = getSidebarWidth(cfg);
+  const sidebarWidth = getEffectiveSidebarWidth(cfg);
   const [winWidth, winHeight] = mainWindow.getContentSize();
   const topOffset = TOPBAR_HEIGHT + VIEW_MARGIN;
 
@@ -681,23 +754,28 @@ function registerAppShortcuts() {
     if (input.type !== "keyDown") return;
 
     const ctrlOrCmd = input.control || input.meta;
-    if (ctrlOrCmd && !input.alt && !input.shift) {
+    if (ctrlOrCmd && !input.alt) {
       const key = input.key.toLowerCase();
-      if (key === "t") {
+      if (!input.shift) {
+        if (key === "t") {
+          event.preventDefault();
+          mainWindow.webContents.send("shortcut-action", "new-tab");
+        } else if (key === "w") {
+          event.preventDefault();
+          mainWindow.webContents.send("shortcut-action", "close-tab");
+        } else if (key === "l") {
+          event.preventDefault();
+          mainWindow.webContents.send("shortcut-action", "focus-url");
+        } else if (key === "r") {
+          event.preventDefault();
+          mainWindow.webContents.send("shortcut-action", "reload");
+        } else if (key === "b") {
+          event.preventDefault();
+          mainWindow.webContents.send("shortcut-action", "toggle-sidebar");
+        }
+      } else if (input.shift && key === "t") {
         event.preventDefault();
-        mainWindow.webContents.send("shortcut-action", "new-tab");
-      } else if (key === "w") {
-        event.preventDefault();
-        mainWindow.webContents.send("shortcut-action", "close-tab");
-      } else if (key === "l") {
-        event.preventDefault();
-        mainWindow.webContents.send("shortcut-action", "focus-url");
-      } else if (key === "r") {
-        event.preventDefault();
-        mainWindow.webContents.send("shortcut-action", "reload");
-      } else if (key === "k") {
-        event.preventDefault();
-        mainWindow.webContents.send("shortcut-action", "quick-search");
+        mainWindow.webContents.send("shortcut-action", "reopen-closed-tab");
       }
     } else if (input.key === "F5") {
       event.preventDefault();
@@ -710,10 +788,10 @@ function registerAppShortcuts() {
 
 function createWindow() {
   const cfg = loadConfig();
-  installNativeAdblockerOnSession(session.defaultSession);
+  installSessionHooks(session.defaultSession);
   for (const sp of cfg.spaces) {
     if (sp.partition) {
-      installNativeAdblockerOnSession(session.fromPartition(sp.partition));
+      installSessionHooks(session.fromPartition(sp.partition));
     }
   }
 
@@ -798,7 +876,7 @@ function instantiateTabView({
     ? `incognito_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
     : space.partition;
   const targetSession = session.fromPartition(partitionKey);
-  installNativeAdblockerOnSession(targetSession);
+  installSessionHooks(targetSession);
 
   const view = new WebContentsView({
     webPreferences: {
@@ -856,9 +934,55 @@ function instantiateTabView({
   };
 }
 
+ipcMain.on("set-sidebar-hidden", (_event, hidden) => {
+  isSidebarHidden = Boolean(hidden);
+  const cfg = loadConfig();
+  cfg.settings.sidebarHidden = isSidebarHidden;
+  saveConfig(cfg);
+  updateAllActiveViewBounds(cfg);
+  if (activeTabId && tabs.has(activeTabId)) {
+    const activeView = tabs.get(activeTabId).view;
+    if (
+      activeView &&
+      activeView.webContents &&
+      !activeView.webContents.isDestroyed()
+    ) {
+      activeView.webContents.invalidate();
+    }
+  }
+});
+
 ipcMain.on("copy-text", (_event, text) => {
   if (typeof text === "string" && text.length > 0) {
     clipboard.writeText(text);
+  }
+});
+
+// IPC Téléchargements
+ipcMain.handle("open-download-file", async (_event, downloadId) => {
+  const entry = activeDownloads.get(downloadId);
+  if (!entry || !entry.savePath || !fs.existsSync(entry.savePath)) return false;
+  const err = await shell.openPath(entry.savePath);
+  return !err;
+});
+
+ipcMain.handle("show-download-in-folder", (_event, downloadId) => {
+  const entry = activeDownloads.get(downloadId);
+  if (!entry || !entry.savePath || !fs.existsSync(entry.savePath)) return false;
+  shell.showItemInFolder(entry.savePath);
+  return true;
+});
+
+ipcMain.handle("cancel-download", (_event, downloadId) => {
+  const entry = activeDownloads.get(downloadId);
+  if (!entry || !entry.item) return false;
+  try {
+    entry.item.cancel();
+    entry.state = "cancelled";
+    emitDownloadProgress(entry);
+    return true;
+  } catch {
+    return false;
   }
 });
 
@@ -963,6 +1087,9 @@ ipcMain.handle("update-settings", (_event, partialSettings) => {
   if (typeof cfg.settings.blockTrackers !== "boolean") {
     cfg.settings.blockTrackers = true;
   }
+  if (typeof cfg.settings.sidebarHidden !== "boolean") {
+    cfg.settings.sidebarHidden = isSidebarHidden;
+  }
   saveConfig(cfg);
   updateAllActiveViewBounds(cfg);
   return cfg;
@@ -1045,7 +1172,7 @@ ipcMain.handle("add-space", (_event, { name, profileId, color }) => {
     folders: [],
   });
 
-  installNativeAdblockerOnSession(session.fromPartition(partition));
+  installSessionHooks(session.fromPartition(partition));
   saveConfig(cfg);
   return cfg;
 });
@@ -1160,6 +1287,27 @@ ipcMain.handle(
         icon: (bookmark.icon || "").trim() || initialBadge,
       });
       folder.expanded = true;
+      saveConfig(cfg);
+    }
+    return cfg;
+  },
+);
+
+ipcMain.handle(
+  "update-bookmark",
+  (_event, { spaceId = currentSpaceId, folderId, bookmarkId, patch }) => {
+    const cfg = loadConfig();
+    const sp = getSpaceById(cfg, spaceId);
+    const folder = sp && sp.folders.find((f) => f.id === folderId);
+    const bm = folder && folder.bookmarks.find((b) => b.id === bookmarkId);
+    if (bm && patch) {
+      if (typeof patch.title === "string" && patch.title.trim()) {
+        bm.title = patch.title.trim();
+        bm.icon = bm.title.charAt(0).toUpperCase() || bm.icon || "L";
+      }
+      if (typeof patch.url === "string" && patch.url.trim()) {
+        bm.url = formatInputToUrl(patch.url.trim(), cfg);
+      }
       saveConfig(cfg);
     }
     return cfg;

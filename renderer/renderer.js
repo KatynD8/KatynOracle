@@ -7,6 +7,7 @@ const ramMeterTextEl = document.getElementById("ram-meter-text");
 const btnSuspendInactive = document.getElementById("btn-suspend-inactive");
 const btnLogoMenu = document.getElementById("btn-logo-menu");
 const btnToggleSidebarMode = document.getElementById("btn-toggle-sidebar-mode");
+const btnRestoreSidebar = document.getElementById("btn-restore-sidebar");
 
 const btnNewTab = document.getElementById("btn-new-tab");
 const btnQuickNewTab = document.getElementById("btn-quick-new-tab");
@@ -25,6 +26,10 @@ const currentSpaceBtn = document.getElementById("current-space-btn");
 const currentSpaceLabel = document.getElementById("current-space-label");
 const spacesDropdown = document.getElementById("spaces-dropdown");
 
+const downloadsBarEl = document.getElementById("downloads-bar");
+const downloadsListEl = document.getElementById("downloads-list");
+const btnClearDownloads = document.getElementById("btn-clear-downloads");
+
 const homeDashboardEl = document.getElementById("home-dashboard");
 const webViewFrameEl = document.getElementById("web-view-frame");
 const homeSearchForm = document.getElementById("home-search-form");
@@ -33,7 +38,10 @@ const homeSearchInput = document.getElementById("home-search-input");
 // Menu contextuel
 const contextMenuEl = document.getElementById("context-menu");
 const ctxOpenNewTabBtn = document.getElementById("ctx-open-new-tab");
+const ctxReopenClosedTabBtn = document.getElementById("ctx-reopen-closed-tab");
+const ctxEditBookmarkBtn = document.getElementById("ctx-edit-bookmark");
 const ctxCopyLinkBtn = document.getElementById("ctx-copy-link");
+const ctxCopyCleanLinkBtn = document.getElementById("ctx-copy-clean-link");
 const ctxAddBookmarkBtn = document.getElementById("ctx-add-bookmark");
 const ctxCloseViewBtn = document.getElementById("ctx-close-view");
 let contextTarget = null;
@@ -55,9 +63,146 @@ const btnInputCancelSecondary = document.getElementById(
 
 let resolveInputModal = null;
 
-// État Drag & Drop
+// État Drag & Drop, Sidebar, Onglets fermés & Téléchargements
 let draggedFolderId = null;
-let draggedBookmark = null; // { folderId, bookmarkId }
+let draggedBookmark = null;
+let sidebarHidden = false;
+const closedTabsStack = []; // [{ spaceId, title, url }]
+const downloadsMap = new Map();
+
+function sanitizeTrackingUrl(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== "string") return "";
+  try {
+    const parsed = new URL(rawUrl.trim());
+    const trackingKeys = [
+      "utm_source",
+      "utm_medium",
+      "utm_campaign",
+      "utm_term",
+      "utm_content",
+      "fbclid",
+      "gclid",
+      "si",
+    ];
+    for (const k of trackingKeys) {
+      parsed.searchParams.delete(k);
+    }
+    return parsed.toString();
+  } catch {
+    return rawUrl.trim();
+  }
+}
+
+function renderDownloadsBar() {
+  if (!downloadsBarEl || !downloadsListEl) return;
+  const items = Array.from(downloadsMap.values());
+  if (items.length === 0) {
+    downloadsBarEl.classList.add("hidden");
+    return;
+  }
+
+  downloadsBarEl.classList.remove("hidden");
+  downloadsListEl.innerHTML = "";
+
+  items
+    .slice()
+    .reverse()
+    .forEach((dl) => {
+      const row = document.createElement("div");
+      row.className = "download-row";
+
+      const meta = document.createElement("div");
+      meta.className = "download-meta";
+
+      const nameSpan = document.createElement("span");
+      nameSpan.className = "download-name";
+      nameSpan.textContent = dl.filename;
+      nameSpan.title = dl.savePath || dl.filename;
+
+      const statusSpan = document.createElement("span");
+      statusSpan.className = "download-status";
+      if (dl.state === "completed") {
+        statusSpan.textContent = "Terminé";
+        statusSpan.style.color = "var(--accent-aqua)";
+      } else if (dl.state === "cancelled") {
+        statusSpan.textContent = "Annulé";
+        statusSpan.style.color = "var(--accent-rose)";
+      } else if (dl.state === "interrupted") {
+        statusSpan.textContent = "Interrompu";
+        statusSpan.style.color = "var(--accent-peche)";
+      } else {
+        const pct =
+          dl.totalBytes > 0
+            ? Math.min(
+                100,
+                Math.round((dl.receivedBytes / dl.totalBytes) * 100),
+              )
+            : null;
+        statusSpan.textContent =
+          pct !== null
+            ? `${pct}%`
+            : `${Math.round((dl.receivedBytes || 0) / 1024)} Ko`;
+      }
+
+      meta.appendChild(nameSpan);
+      meta.appendChild(statusSpan);
+
+      const actions = document.createElement("div");
+      actions.className = "download-actions";
+
+      if (dl.state === "progressing") {
+        const cancelBtn = document.createElement("button");
+        cancelBtn.type = "button";
+        cancelBtn.className = "dl-action-btn";
+        cancelBtn.textContent = "Annuler";
+        cancelBtn.onclick = () => window.browserAPI.cancelDownload(dl.id);
+        actions.appendChild(cancelBtn);
+      } else if (dl.state === "completed") {
+        const openBtn = document.createElement("button");
+        openBtn.type = "button";
+        openBtn.className = "dl-action-btn";
+        openBtn.textContent = "Ouvrir";
+        openBtn.onclick = () => window.browserAPI.openDownloadFile(dl.id);
+
+        const folderBtn = document.createElement("button");
+        folderBtn.type = "button";
+        folderBtn.className = "dl-action-btn";
+        folderBtn.textContent = "Dossier";
+        folderBtn.onclick = () => window.browserAPI.showDownloadInFolder(dl.id);
+
+        actions.appendChild(openBtn);
+        actions.appendChild(folderBtn);
+      }
+
+      row.appendChild(meta);
+      row.appendChild(actions);
+      downloadsListEl.appendChild(row);
+    });
+}
+
+window.browserAPI.onDownloadUpdate((payload) => {
+  if (!payload || !payload.id) return;
+  downloadsMap.set(payload.id, payload);
+  renderDownloadsBar();
+});
+
+if (btnClearDownloads) {
+  btnClearDownloads.addEventListener("click", () => {
+    downloadsMap.clear();
+    renderDownloadsBar();
+  });
+}
+
+function setSidebarHidden(hidden, persist = true) {
+  sidebarHidden = Boolean(hidden);
+  sidebarEl.classList.toggle("is-hidden", sidebarHidden);
+  if (btnRestoreSidebar) {
+    btnRestoreSidebar.classList.toggle("hidden", !sidebarHidden);
+  }
+  if (persist) {
+    window.browserAPI.setSidebarHidden(sidebarHidden);
+  }
+}
 
 function clearDragIndicators() {
   document
@@ -175,7 +320,6 @@ const extensionsConfigListEl = document.getElementById(
   "extensions-config-list",
 );
 
-// Interrupteur natif bloqueur pubs/traceurs injecté dans l'onglet Général
 let settingBlockTrackersEl = document.getElementById("setting-block-trackers");
 if (!settingBlockTrackersEl && btnSaveGeneral && btnSaveGeneral.parentElement) {
   const wrap = document.createElement("label");
@@ -348,6 +492,7 @@ function applyGeneralSettingsUI() {
   if (!appConfig || !appConfig.settings) return;
   const width = Number(appConfig.settings.sidebarWidth) || 224;
   sidebarEl.style.width = `${width}px`;
+  setSidebarHidden(Boolean(appConfig.settings.sidebarHidden), false);
 
   settingSearchEngine.value = appConfig.settings.searchEngine || "google";
   settingHomeUrl.value = appConfig.settings.homeUrl || "katyn://accueil";
@@ -606,7 +751,6 @@ function renderFolders() {
     listEl.className = `folder-bookmarks${folder.expanded ? "" : " collapsed"}`;
     listEl.dataset.folderId = folder.id;
 
-    // Drop d'un dossier ou d'un lien sur le bloc/header/liste du dossier
     folderBlock.addEventListener("dragover", (e) => {
       e.preventDefault();
       e.dataTransfer.dropEffect = "move";
@@ -775,7 +919,12 @@ function renderFolders() {
       item.appendChild(closeViewBtn);
       item.onclick = () => openOrFocusBookmark(bm);
       item.oncontextmenu = (e) =>
-        showContextMenu(e, { url: bm.url, title: bm.title, bookmarkId: bm.id });
+        showContextMenu(e, {
+          url: bm.url,
+          title: bm.title,
+          bookmarkId: bm.id,
+          folderId: folder.id,
+        });
 
       listEl.appendChild(item);
     });
@@ -805,6 +954,35 @@ function syncTopBarWithTab(title, url, canGoBack = null, canGoForward = null) {
   }
 }
 
+function recordClosedTab(title, url) {
+  if (!url || isHomeUrl(url)) return;
+  closedTabsStack.push({
+    spaceId: currentSpaceId,
+    title: title || url,
+    url,
+  });
+  if (closedTabsStack.length > 25) {
+    closedTabsStack.shift();
+  }
+}
+
+async function reopenLastClosedTab() {
+  for (let i = closedTabsStack.length - 1; i >= 0; i--) {
+    if (closedTabsStack[i].spaceId === currentSpaceId) {
+      const [item] = closedTabsStack.splice(i, 1);
+      await addTab(item.url, currentSpaceId);
+      return;
+    }
+  }
+  if (closedTabsStack.length > 0) {
+    const item = closedTabsStack.pop();
+    if (item.spaceId !== currentSpaceId) {
+      await selectSpace(item.spaceId, false);
+    }
+    await addTab(item.url, item.spaceId);
+  }
+}
+
 function renderTabElement(id, title, isActive = false, url = "") {
   const li = document.createElement("li");
   li.className = `tab-item is-open${isActive ? " active" : ""}`;
@@ -830,6 +1008,7 @@ function renderTabElement(id, title, isActive = false, url = "") {
   btnMinus.textContent = "−";
   btnMinus.onclick = (e) => {
     e.stopPropagation();
+    recordClosedTab(li.dataset.title, li.dataset.url);
     window.browserAPI.closeTab(id);
     li.remove();
     if (!tabsListEl.querySelector(".tab-item")) {
@@ -970,6 +1149,9 @@ async function closeCurrentTab() {
   const tabEl = document.querySelector(
     `.tab-item[data-tab-id="${currentActiveId}"]`,
   );
+  if (tabEl) {
+    recordClosedTab(tabEl.dataset.title, tabEl.dataset.url);
+  }
   window.browserAPI.closeTab(currentActiveId);
   if (tabEl) tabEl.remove();
   if (!tabsListEl.querySelector(".tab-item")) {
@@ -989,8 +1171,21 @@ function showContextMenu(e, itemInfo) {
   e.stopPropagation();
   contextTarget = itemInfo;
 
-  const menuW = 220;
-  const menuH = 140;
+  if (ctxEditBookmarkBtn) {
+    ctxEditBookmarkBtn.classList.toggle(
+      "hidden",
+      !Boolean(itemInfo && itemInfo.bookmarkId && itemInfo.folderId),
+    );
+  }
+  if (ctxReopenClosedTabBtn) {
+    ctxReopenClosedTabBtn.classList.toggle(
+      "hidden",
+      closedTabsStack.length === 0,
+    );
+  }
+
+  const menuW = 235;
+  const menuH = 210;
   const x = Math.min(window.innerWidth - menuW - 8, Math.max(8, e.clientX));
   const y = Math.min(window.innerHeight - menuH - 8, Math.max(8, e.clientY));
 
@@ -1006,12 +1201,56 @@ ctxOpenNewTabBtn.addEventListener("click", async () => {
   hideContextMenu();
 });
 
+if (ctxReopenClosedTabBtn) {
+  ctxReopenClosedTabBtn.addEventListener("click", async () => {
+    hideContextMenu();
+    await reopenLastClosedTab();
+  });
+}
+
+if (ctxEditBookmarkBtn) {
+  ctxEditBookmarkBtn.addEventListener("click", async () => {
+    const target = contextTarget;
+    hideContextMenu();
+    if (!target || !target.bookmarkId || !target.folderId) return;
+    const res = await askUserInput({
+      title: "Modifier le lien",
+      label1: "Nom du lien",
+      value1: target.title || "",
+      showField2: true,
+      label2: "URL",
+      value2: target.url || "",
+    });
+    if (!res) return;
+    appConfig = await window.browserAPI.updateBookmark(
+      currentSpaceId,
+      target.folderId,
+      target.bookmarkId,
+      {
+        title: res.field1,
+        url: res.field2,
+      },
+    );
+    renderFolders();
+  });
+}
+
 ctxCopyLinkBtn.addEventListener("click", () => {
   if (contextTarget && contextTarget.url) {
     window.browserAPI.copyText(contextTarget.url);
   }
   hideContextMenu();
 });
+
+if (ctxCopyCleanLinkBtn) {
+  ctxCopyCleanLinkBtn.addEventListener("click", () => {
+    const raw = (contextTarget && contextTarget.url) || urlInput.value.trim();
+    if (raw) {
+      window.browserAPI.copyText(sanitizeTrackingUrl(raw));
+    }
+    hideContextMenu();
+  });
+}
 
 ctxAddBookmarkBtn.addEventListener("click", async () => {
   const activeSpace = getActiveSpace();
@@ -1039,11 +1278,14 @@ ctxCloseViewBtn.addEventListener("click", async () => {
   if (contextTarget && contextTarget.bookmarkId) {
     await closeActiveBookmarkView(contextTarget.bookmarkId);
   } else if (contextTarget && contextTarget.tabId) {
-    window.browserAPI.closeTab(contextTarget.tabId);
     const el = document.querySelector(
       `.tab-item[data-tab-id="${contextTarget.tabId}"]`,
     );
-    if (el) el.remove();
+    if (el) {
+      recordClosedTab(el.dataset.title, el.dataset.url);
+      el.remove();
+    }
+    window.browserAPI.closeTab(contextTarget.tabId);
   }
   hideContextMenu();
 });
@@ -1099,14 +1341,14 @@ btnSuspendInactive.addEventListener("click", async () => {
 });
 
 btnToggleSidebarMode.addEventListener("click", () => {
-  const activeSpace = getActiveSpace();
-  if (!activeSpace || !Array.isArray(activeSpace.folders)) return;
-  const anyExpanded = activeSpace.folders.some((f) => f.expanded);
-  activeSpace.folders.forEach((f) => {
-    f.expanded = !anyExpanded;
-  });
-  renderFolders();
+  setSidebarHidden(!sidebarHidden, true);
 });
+
+if (btnRestoreSidebar) {
+  btnRestoreSidebar.addEventListener("click", () => {
+    setSidebarHidden(false, true);
+  });
+}
 
 function renderSettingsModalPanels() {
   if (!appConfig) return;
@@ -1329,6 +1571,7 @@ btnSaveGeneral.addEventListener("click", async () => {
     blockTrackers: settingBlockTrackersEl
       ? Boolean(settingBlockTrackersEl.checked)
       : true,
+    sidebarHidden,
   });
   applyGeneralSettingsUI();
   closeSettingsModal();
@@ -1426,11 +1669,15 @@ if (homeSearchForm && homeSearchInput) {
   });
 }
 
-window.browserAPI.onShortcut((action) => {
+window.browserAPI.onShortcut(async (action) => {
   if (action === "new-tab") {
     addTab("katyn://accueil", currentSpaceId);
   } else if (action === "close-tab") {
     closeCurrentTab();
+  } else if (action === "reopen-closed-tab") {
+    await reopenLastClosedTab();
+  } else if (action === "toggle-sidebar") {
+    setSidebarHidden(!sidebarHidden, true);
   } else if (action === "focus-url") {
     if (isOnHomeView && homeSearchInput) {
       homeSearchInput.focus();

@@ -110,6 +110,15 @@ body {
   padding: 10px 10px 8px 10px;
   gap: 10px;
   flex-shrink: 0;
+  overflow: hidden;
+}
+
+.sidebar.is-hidden {
+  display: none;
+  width: 0;
+  min-width: 0;
+  padding: 0;
+  border: none;
 }
 
 .sidebar-top-bar {
@@ -713,6 +722,10 @@ body {
   background: var(--surface-graphite);
 }
 
+.nav-ctrl-btn.hidden {
+  display: none;
+}
+
 .nav-pill {
   flex: 1;
   max-width: 540px;
@@ -762,6 +775,115 @@ body {
   border-radius: 4px;
   background: rgba(163, 162, 184, 0.08);
   flex-shrink: 0;
+}
+
+/* Tiroir téléchargements */
+.downloads-bar {
+  margin: 6px 8px 0 8px;
+  background: var(--surface-graphite);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-max);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex-shrink: 0;
+  animation: diagonalSliceIn var(--dur-menu) var(--ease-katyn);
+}
+
+.downloads-bar.hidden {
+  display: none;
+}
+
+.downloads-bar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.downloads-title {
+  font-family: var(--font-display);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--accent-aqua);
+}
+
+.btn-mini-text {
+  background: transparent;
+  border: none;
+  color: var(--text-second);
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.btn-mini-text:hover {
+  color: var(--text-brume);
+}
+
+.downloads-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 110px;
+  overflow-y: auto;
+}
+
+.download-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--bg-onyx);
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 0.75rem;
+}
+
+.download-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.download-name {
+  color: var(--text-brume);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.download-status {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  color: var(--text-second);
+  flex-shrink: 0;
+}
+
+.download-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.dl-action-btn {
+  background: var(--surface-graphite);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-brume);
+  font-size: 0.68rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.dl-action-btn:hover {
+  border-color: var(--accent-aqua);
+  color: var(--accent-aqua);
 }
 
 /* Accueil interne Katyn Oracle */
@@ -869,7 +991,7 @@ body {
 /* Menu contextuel */
 .context-menu {
   position: fixed;
-  min-width: 210px;
+  min-width: 225px;
   background: var(--surface-graphite);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-max);
@@ -894,6 +1016,10 @@ body {
   font-size: 0.8rem;
   border-radius: 5px;
   cursor: pointer;
+}
+
+.context-menu-item.hidden {
+  display: none;
 }
 
 .context-menu-item:hover {

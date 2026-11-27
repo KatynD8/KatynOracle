@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld("browserAPI", {
   getConfig: () => ipcRenderer.invoke("get-config"),
   updateSettings: (settings) => ipcRenderer.invoke("update-settings", settings),
   setSettingsOpen: (isOpen) => ipcRenderer.send("set-settings-open", isOpen),
+  setSidebarHidden: (isHidden) =>
+    ipcRenderer.send("set-sidebar-hidden", Boolean(isHidden)),
 
   // Extensions Chrome (dossiers non empaquetés)
   pickExtensionFolder: () => ipcRenderer.invoke("pick-extension-folder"),
@@ -36,7 +38,7 @@ contextBridge.exposeInMainWorld("browserAPI", {
   removeSharedPin: (pinId) =>
     ipcRenderer.invoke("remove-shared-pin", { pinId }),
 
-  // Dossiers & Favoris + Drag & Drop
+  // Dossiers & Favoris + Drag & Drop + Édition
   addFolder: (spaceId, name) =>
     ipcRenderer.invoke("add-folder", { spaceId, name }),
   renameFolder: (spaceId, folderId, name) =>
@@ -47,6 +49,13 @@ contextBridge.exposeInMainWorld("browserAPI", {
     ipcRenderer.invoke("reorder-folders", { spaceId, orderedFolderIds }),
   addBookmark: (spaceId, folderId, bookmark) =>
     ipcRenderer.invoke("add-bookmark", { spaceId, folderId, bookmark }),
+  updateBookmark: (spaceId, folderId, bookmarkId, patch) =>
+    ipcRenderer.invoke("update-bookmark", {
+      spaceId,
+      folderId,
+      bookmarkId,
+      patch,
+    }),
   removeBookmark: (spaceId, folderId, bookmarkId) =>
     ipcRenderer.invoke("remove-bookmark", { spaceId, folderId, bookmarkId }),
   moveBookmark: (
@@ -63,6 +72,14 @@ contextBridge.exposeInMainWorld("browserAPI", {
       targetFolderId,
       targetIndex,
     }),
+
+  // Téléchargements
+  openDownloadFile: (downloadId) =>
+    ipcRenderer.invoke("open-download-file", downloadId),
+  showDownloadInFolder: (downloadId) =>
+    ipcRenderer.invoke("show-download-in-folder", downloadId),
+  cancelDownload: (downloadId) =>
+    ipcRenderer.invoke("cancel-download", downloadId),
 
   // Onglets, Favoris ouverts & Contrôles de navigation
   createTab: (url, spaceId, options) =>
@@ -86,4 +103,5 @@ contextBridge.exposeInMainWorld("browserAPI", {
   onTabSelected: (cb) => subscribe("tab-selected", cb),
   onRamStats: (cb) => subscribe("ram-stats", cb),
   onShortcut: (cb) => subscribe("shortcut-action", cb),
+  onDownloadUpdate: (cb) => subscribe("download-update", cb),
 });

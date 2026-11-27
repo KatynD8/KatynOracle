@@ -1,308 +1,545 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="fr">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Katyn Oracle</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css" />
-</head>
-<body>
-  <aside id="sidebar" class="sidebar">
-    <!-- Barre supérieure du side panel : logo K + toggle panneau -->
-    <div class="sidebar-top-bar">
-      <button id="btn-logo-menu" class="sidebar-logo-btn" type="button" title="Accueil & Paramètres">
-        <img src="../assets/logo.png" alt="Katyn Oracle" class="sidebar-k-logo" onerror="this.style.display='none'" />
-        <svg class="sidebar-k-svg" viewBox="0 0 28 28" aria-hidden="true">
-          <polygon points="4,3 10,3 10,12 17,3 24,3 14.5,13.5 24.5,25 17.5,25 10,16 10,25 4,25" fill="url(#sideKGrad)"></polygon>
-          <defs>
-            <linearGradient id="sideKGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stop-color="#B8B4F8"></stop>
-              <stop offset="100%" stop-color="#8FE3DC"></stop>
-            </linearGradient>
-          </defs>
-        </svg>
-      </button>
-
-      <div class="sidebar-top-actions">
-        <button id="btn-toggle-sidebar-mode" class="btn-icon-ghost" type="button" title="Replier / déplier les dossiers">
-          <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
-            <rect x="3" y="4" width="18" height="16" rx="2"></rect>
-            <line x1="9" y1="4" x2="9" y2="20"></line>
-          </svg>
-        </button>
-      </div>
-    </div>
-
-    <!-- Raccourcis épinglés (grille 3 colonnes) -->
-    <div id="pinned-grid" class="pinned-grid"></div>
-
-    <!-- Sélecteur d'espace discret : ◆ Perso -->
-    <div class="space-selector-wrapper">
-      <button id="current-space-btn" class="current-space-btn" type="button" title="Changer d'espace">
-        <span id="space-indicator" class="diamond-dot is-filled" aria-hidden="true"></span>
-        <span id="current-space-label">Perso</span>
-      </button>
-      <button id="btn-new-folder" class="btn-icon-ghost" type="button" title="Nouveau dossier">
-        <svg class="icon-svg icon-sm" viewBox="0 0 24 24" aria-hidden="true">
-          <line x1="12" y1="5" x2="12" y2="19"></line>
-          <line x1="5" y1="12" x2="19" y2="12"></line>
-        </svg>
-      </button>
-      <div id="spaces-dropdown" class="spaces-dropdown hidden"></div>
-    </div>
-
-    <!-- Dossiers et liens -->
-    <div id="folders-container" class="folders-container"></div>
-
-    <!-- Onglets ouverts + "+ Nouvel onglet" -->
-    <div class="open-tabs-section">
-      <ul id="tabs-list" class="tabs-list"></ul>
-      <button id="btn-new-tab" class="btn-new-tab-row" type="button">
-        <span class="plus-glyph">+</span>
-        <span>Nouvel onglet</span>
-      </button>
-    </div>
-
-    <!-- Pied discret : RAM & Paramètres -->
-    <div class="sidebar-footer">
-      <div id="ram-meter" class="ram-status-row" title="Mémoire utilisée">
-        <span class="diamond-dot is-filled" aria-hidden="true"></span>
-        <span id="ram-meter-text">RAM : -- Mo</span>
-      </div>
-      <div class="sidebar-footer-btns">
-        <button id="btn-suspend-inactive" class="btn-icon-ghost" type="button" title="Fermer les vues des espaces inactifs">
-          <svg class="icon-svg icon-sm" viewBox="0 0 24 24" aria-hidden="true">
-            <line x1="9" y1="5" x2="9" y2="19"></line>
-            <line x1="15" y1="5" x2="15" y2="19"></line>
-          </svg>
-        </button>
-        <button id="btn-open-settings" class="btn-icon-ghost" type="button" title="Paramètres">
-          <svg class="icon-svg icon-sm" viewBox="0 0 24 24" aria-hidden="true">
-            <circle cx="12" cy="12" r="4"></circle>
-            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"></path>
-          </svg>
-        </button>
-      </div>
-    </div>
-  </aside>
-
-  <main class="workspace-area">
-    <header class="top-nav-bar">
-      <div class="nav-history-group">
-        <button id="btn-back" class="nav-ctrl-btn" type="button" title="Précédent">
-          <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
-            <polyline points="15 18 9 12 15 6"></polyline>
-          </svg>
-        </button>
-        <button id="btn-forward" class="nav-ctrl-btn" type="button" title="Suivant">
-          <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
-            <polyline points="9 18 15 12 9 6"></polyline>
-          </svg>
-        </button>
-        <button id="btn-reload" class="nav-ctrl-btn" type="button" title="Actualiser (Ctrl+R)">
-          <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
-            <polyline points="21 3 21 9 15 9"></polyline>
-          </svg>
-        </button>
-      </div>
-
-      <div class="nav-pill">
-        <span class="nav-lock-wrap" title="Connexion sécurisée">
-          <svg class="icon-svg icon-sm" viewBox="0 0 24 24" aria-hidden="true">
-            <rect x="5" y="11" width="14" height="10" rx="2"></rect>
-            <path d="M8 11V7a4 4 0 0 1 8 0v4"></path>
-          </svg>
-        </span>
-        <form id="nav-form" class="nav-form">
-          <input id="url-input" type="text" placeholder="katyn://accueil" autocomplete="off" spellcheck="false" />
-        </form>
-        <span class="kbd-hint">Ctrl L</span>
-      </div>
-
-      <div class="top-right-actions">
-        <button id="btn-bookmark-current" class="nav-ctrl-btn" type="button" title="Ajouter la page courante aux favoris">
-          <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
-            <polygon points="12 3 14.9 8.9 21.4 9.8 16.7 14.4 17.8 20.9 12 17.8 6.2 20.9 7.3 14.4 2.6 9.8 9.1 8.9 12 3"></polygon>
-          </svg>
-        </button>
-        <button id="btn-quick-new-tab" class="nav-ctrl-btn" type="button" title="Nouvel onglet">
-          <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
-            <rect x="3" y="4" width="18" height="16" rx="2"></rect>
-            <line x1="15" y1="4" x2="15" y2="20"></line>
-          </svg>
-        </button>
-        <button id="btn-open-menu" class="nav-ctrl-btn" type="button" title="Paramètres">
-          <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
-            <line x1="4" y1="7" x2="20" y2="7"></line>
-            <line x1="4" y1="12" x2="20" y2="12"></line>
-            <line x1="4" y1="17" x2="20" y2="17"></line>
-          </svg>
-        </button>
-      </div>
-    </header>
-
-    <!-- Accueil interne Katyn Oracle -->
-    <section id="home-dashboard" class="home-dashboard">
-      <div class="home-watermark" aria-hidden="true">
-        <svg viewBox="0 0 120 120">
-          <polygon points="16,12 44,12 44,52 78,12 108,12 66,58 110,108 78,108 44,68 44,108 16,108" fill="currentColor"></polygon>
-        </svg>
-      </div>
-
-      <div class="home-center">
-        <div class="home-brand-mark" aria-hidden="true">
-          <svg viewBox="0 0 64 64" width="44" height="44">
-            <polygon points="8,6 23,6 23,27 40,6 56,6 34,30 57,58 40,58 23,36 23,58 8,58" fill="url(#katynGrad)"></polygon>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Katyn Oracle</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <aside id="sidebar" class="sidebar">
+      <!-- Barre supérieure du side panel : logo K + bouton cacher/afficher panneau -->
+      <div class="sidebar-top-bar">
+        <button
+          id="btn-logo-menu"
+          class="sidebar-logo-btn"
+          type="button"
+          title="Accueil & Paramètres"
+        >
+          <img
+            src="../assets/logo.png"
+            alt="Katyn Oracle"
+            class="sidebar-k-logo"
+            onerror="this.style.display = 'none'"
+          />
+          <svg class="sidebar-k-svg" viewBox="0 0 28 28" aria-hidden="true">
+            <polygon
+              points="4,3 10,3 10,12 17,3 24,3 14.5,13.5 24.5,25 17.5,25 10,16 10,25 4,25"
+              fill="url(#sideKGrad)"
+            ></polygon>
             <defs>
-              <linearGradient id="katynGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <linearGradient
+                id="sideKGrad"
+                x1="0%"
+                y1="0%"
+                x2="100%"
+                y2="100%"
+              >
                 <stop offset="0%" stop-color="#B8B4F8"></stop>
                 <stop offset="100%" stop-color="#8FE3DC"></stop>
               </linearGradient>
             </defs>
           </svg>
+        </button>
+
+        <div class="sidebar-top-actions">
+          <button
+            id="btn-toggle-sidebar-mode"
+            class="btn-icon-ghost"
+            type="button"
+            title="Masquer / afficher le panneau latéral (Ctrl+B)"
+          >
+            <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="3" y="4" width="18" height="16" rx="2"></rect>
+              <line x1="9" y1="4" x2="9" y2="20"></line>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Raccourcis épinglés (grille 3 colonnes) -->
+      <div id="pinned-grid" class="pinned-grid"></div>
+
+      <!-- Sélecteur d'espace discret : ◆ Perso -->
+      <div class="space-selector-wrapper">
+        <button
+          id="current-space-btn"
+          class="current-space-btn"
+          type="button"
+          title="Changer d'espace"
+        >
+          <span
+            id="space-indicator"
+            class="diamond-dot is-filled"
+            aria-hidden="true"
+          ></span>
+          <span id="current-space-label">Perso</span>
+        </button>
+        <button
+          id="btn-new-folder"
+          class="btn-icon-ghost"
+          type="button"
+          title="Nouveau dossier"
+        >
+          <svg class="icon-svg icon-sm" viewBox="0 0 24 24" aria-hidden="true">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+        </button>
+        <div id="spaces-dropdown" class="spaces-dropdown hidden"></div>
+      </div>
+
+      <!-- Dossiers et liens -->
+      <div id="folders-container" class="folders-container"></div>
+
+      <!-- Onglets ouverts + "+ Nouvel onglet" -->
+      <div class="open-tabs-section">
+        <ul id="tabs-list" class="tabs-list"></ul>
+        <button id="btn-new-tab" class="btn-new-tab-row" type="button">
+          <span class="plus-glyph">+</span>
+          <span>Nouvel onglet</span>
+        </button>
+      </div>
+
+      <!-- Pied discret : RAM & Paramètres -->
+      <div class="sidebar-footer">
+        <div id="ram-meter" class="ram-status-row" title="Mémoire utilisée">
+          <span class="diamond-dot is-filled" aria-hidden="true"></span>
+          <span id="ram-meter-text">RAM : -- Mo</span>
+        </div>
+        <div class="sidebar-footer-btns">
+          <button
+            id="btn-suspend-inactive"
+            class="btn-icon-ghost"
+            type="button"
+            title="Fermer les vues des espaces inactifs"
+          >
+            <svg
+              class="icon-svg icon-sm"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <line x1="9" y1="5" x2="9" y2="19"></line>
+              <line x1="15" y1="5" x2="15" y2="19"></line>
+            </svg>
+          </button>
+          <button
+            id="btn-open-settings"
+            class="btn-icon-ghost"
+            type="button"
+            title="Paramètres"
+          >
+            <svg
+              class="icon-svg icon-sm"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="4"></circle>
+              <path
+                d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"
+              ></path>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <main class="workspace-area">
+      <header class="top-nav-bar">
+        <div class="nav-history-group">
+          <button
+            id="btn-restore-sidebar"
+            class="nav-ctrl-btn hidden"
+            type="button"
+            title="Afficher le panneau latéral (Ctrl+B)"
+          >
+            <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="3" y="4" width="18" height="16" rx="2"></rect>
+              <line x1="9" y1="4" x2="9" y2="20"></line>
+            </svg>
+          </button>
+          <button
+            id="btn-back"
+            class="nav-ctrl-btn"
+            type="button"
+            title="Précédent"
+          >
+            <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+              <polyline points="15 18 9 12 15 6"></polyline>
+            </svg>
+          </button>
+          <button
+            id="btn-forward"
+            class="nav-ctrl-btn"
+            type="button"
+            title="Suivant"
+          >
+            <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+              <polyline points="9 18 15 12 9 6"></polyline>
+            </svg>
+          </button>
+          <button
+            id="btn-reload"
+            class="nav-ctrl-btn"
+            type="button"
+            title="Actualiser (Ctrl+R)"
+          >
+            <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M21 12a9 9 0 1 1-2.64-6.36"></path>
+              <polyline points="21 3 21 9 15 9"></polyline>
+            </svg>
+          </button>
         </div>
 
-        <h1 class="home-title">Katyn Oracle</h1>
+        <div class="nav-pill">
+          <span class="nav-lock-wrap" title="Connexion sécurisée">
+            <svg
+              class="icon-svg icon-sm"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <rect x="5" y="11" width="14" height="10" rx="2"></rect>
+              <path d="M8 11V7a4 4 0 0 1 8 0v4"></path>
+            </svg>
+          </span>
+          <form id="nav-form" class="nav-form">
+            <input
+              id="url-input"
+              type="text"
+              placeholder="katyn://accueil"
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </form>
+          <span class="kbd-hint">Ctrl L</span>
+        </div>
 
-        <form id="home-search-form" class="home-search-pill">
-          <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
-            <circle cx="11" cy="11" r="7"></circle>
-            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        <div class="top-right-actions">
+          <button
+            id="btn-bookmark-current"
+            class="nav-ctrl-btn"
+            type="button"
+            title="Ajouter la page courante aux favoris"
+          >
+            <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+              <polygon
+                points="12 3 14.9 8.9 21.4 9.8 16.7 14.4 17.8 20.9 12 17.8 6.2 20.9 7.3 14.4 2.6 9.8 9.1 8.9 12 3"
+              ></polygon>
+            </svg>
+          </button>
+          <button
+            id="btn-quick-new-tab"
+            class="nav-ctrl-btn"
+            type="button"
+            title="Nouvel onglet"
+          >
+            <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="3" y="4" width="18" height="16" rx="2"></rect>
+              <line x1="15" y1="4" x2="15" y2="20"></line>
+            </svg>
+          </button>
+          <button
+            id="btn-open-menu"
+            class="nav-ctrl-btn"
+            type="button"
+            title="Paramètres"
+          >
+            <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+              <line x1="4" y1="7" x2="20" y2="7"></line>
+              <line x1="4" y1="12" x2="20" y2="12"></line>
+              <line x1="4" y1="17" x2="20" y2="17"></line>
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- Tiroir compact de téléchargements -->
+      <div id="downloads-bar" class="downloads-bar hidden">
+        <div class="downloads-bar-header">
+          <span class="downloads-title">TÉLÉCHARGEMENTS</span>
+          <button id="btn-clear-downloads" class="btn-mini-text" type="button">
+            Masquer
+          </button>
+        </div>
+        <div id="downloads-list" class="downloads-list"></div>
+      </div>
+
+      <!-- Accueil interne Katyn Oracle -->
+      <section id="home-dashboard" class="home-dashboard">
+        <div class="home-watermark" aria-hidden="true">
+          <svg viewBox="0 0 120 120">
+            <polygon
+              points="16,12 44,12 44,52 78,12 108,12 66,58 110,108 78,108 44,68 44,108 16,108"
+              fill="currentColor"
+            ></polygon>
           </svg>
-          <input id="home-search-input" type="text" placeholder="Rechercher ou saisir une adresse" autocomplete="off" spellcheck="false" />
+        </div>
+
+        <div class="home-center">
+          <div class="home-brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 64 64" width="44" height="44">
+              <polygon
+                points="8,6 23,6 23,27 40,6 56,6 34,30 57,58 40,58 23,36 23,58 8,58"
+                fill="url(#katynGrad)"
+              ></polygon>
+              <defs>
+                <linearGradient
+                  id="katynGrad"
+                  x1="0%"
+                  y1="0%"
+                  x2="100%"
+                  y2="100%"
+                >
+                  <stop offset="0%" stop-color="#B8B4F8"></stop>
+                  <stop offset="100%" stop-color="#8FE3DC"></stop>
+                </linearGradient>
+              </defs>
+            </svg>
+          </div>
+
+          <h1 class="home-title">Katyn Oracle</h1>
+
+          <form id="home-search-form" class="home-search-pill">
+            <svg class="icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="11" cy="11" r="7"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input
+              id="home-search-input"
+              type="text"
+              placeholder="Rechercher ou saisir une adresse"
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </form>
+        </div>
+      </section>
+
+      <div id="web-view-frame" class="web-view-frame hidden"></div>
+    </main>
+
+    <!-- Menu contextuel -->
+    <div id="context-menu" class="context-menu hidden" role="menu">
+      <button
+        id="ctx-open-new-tab"
+        class="context-menu-item is-highlighted"
+        type="button"
+      >
+        Ouvrir dans un nouvel onglet
+      </button>
+      <button
+        id="ctx-reopen-closed-tab"
+        class="context-menu-item hidden"
+        type="button"
+      >
+        Rouvrir l'onglet fermé (Ctrl+Shift+T)
+      </button>
+      <button
+        id="ctx-edit-bookmark"
+        class="context-menu-item hidden"
+        type="button"
+      >
+        Modifier le lien
+      </button>
+      <button id="ctx-copy-link" class="context-menu-item" type="button">
+        Copier le lien
+      </button>
+      <button id="ctx-copy-clean-link" class="context-menu-item" type="button">
+        Copier le lien propre (sans traceurs)
+      </button>
+      <button id="ctx-add-bookmark" class="context-menu-item" type="button">
+        Ajouter aux favoris
+      </button>
+      <button id="ctx-close-view" class="context-menu-item" type="button">
+        Clore la vue (couper son / RAM)
+      </button>
+    </div>
+
+    <!-- Modale Paramètres -->
+    <div id="settings-modal" class="modal-backdrop hidden">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h2>Paramètres · Katyn Oracle</h2>
+          <button id="btn-close-settings" class="btn-secondary" type="button">
+            ✕
+          </button>
+        </div>
+
+        <div class="modal-tabs">
+          <button class="modal-tab active" data-tab="general" type="button">
+            Général
+          </button>
+          <button class="modal-tab" data-tab="profiles" type="button">
+            Profils
+          </button>
+          <button class="modal-tab" data-tab="spaces" type="button">
+            Espaces
+          </button>
+          <button class="modal-tab" data-tab="pins" type="button">
+            Épinglés
+          </button>
+          <button class="modal-tab" data-tab="extensions" type="button">
+            Extensions
+          </button>
+        </div>
+
+        <div id="tab-general" class="modal-panel active">
+          <label class="field">
+            <span>Moteur de recherche</span>
+            <select id="setting-search-engine">
+              <option value="google">Google (Par défaut)</option>
+              <option value="brave">Brave Search</option>
+              <option value="bing">Bing</option>
+              <option value="startpage">Startpage</option>
+            </select>
+          </label>
+
+          <label class="field">
+            <span>Page d'accueil</span>
+            <input
+              id="setting-home-url"
+              type="text"
+              placeholder="katyn://accueil ou https://..."
+            />
+          </label>
+
+          <label class="field">
+            <span>Largeur de la barre latérale (px)</span>
+            <input
+              id="setting-sidebar-width"
+              type="number"
+              min="200"
+              max="420"
+              step="10"
+            />
+          </label>
+
+          <div class="modal-actions">
+            <button id="btn-save-general" class="btn-primary" type="button">
+              Enregistrer
+            </button>
+          </div>
+        </div>
+
+        <div id="tab-profiles" class="modal-panel">
+          <div id="profiles-list" class="config-list"></div>
+          <div class="inline-form mt-16">
+            <input
+              id="new-profile-name"
+              type="text"
+              placeholder="Nom du profil"
+            />
+            <input id="new-profile-color" type="color" value="#B8B4F8" />
+            <button id="btn-add-profile" class="btn-primary" type="button">
+              Ajouter
+            </button>
+          </div>
+        </div>
+
+        <div id="tab-spaces" class="modal-panel">
+          <div id="spaces-config-list" class="config-list"></div>
+          <div class="inline-form mt-16">
+            <input
+              id="new-space-name"
+              type="text"
+              placeholder="Nom de l'espace"
+            />
+            <select id="new-space-profile"></select>
+            <input id="new-space-color" type="color" value="#8FE3DC" />
+            <button id="btn-add-space" class="btn-primary" type="button">
+              Créer
+            </button>
+          </div>
+        </div>
+
+        <div id="tab-pins" class="modal-panel">
+          <div id="pins-config-list" class="config-list"></div>
+          <div class="inline-form mt-16">
+            <input
+              id="new-pin-icon"
+              class="input-icon"
+              type="text"
+              placeholder="◆"
+              maxlength="4"
+            />
+            <input id="new-pin-title" type="text" placeholder="Titre" />
+            <input id="new-pin-url" type="text" placeholder="https://..." />
+            <button id="btn-add-pin" class="btn-primary" type="button">
+              Ajouter
+            </button>
+          </div>
+        </div>
+
+        <div id="tab-extensions" class="modal-panel">
+          <p class="helper-text">
+            Sélectionne un dossier d'extension non empaqueté contenant un
+            <code>manifest.json</code>.
+          </p>
+          <div class="inline-form">
+            <input
+              id="new-ext-path"
+              type="text"
+              placeholder="C:\chemin\vers\extension"
+            />
+            <button id="btn-browse-ext" class="btn-secondary" type="button">
+              Parcourir...
+            </button>
+            <button id="btn-add-ext" class="btn-primary" type="button">
+              Ajouter
+            </button>
+          </div>
+          <p id="ext-error-msg" class="error-text hidden"></p>
+          <div id="extensions-config-list" class="config-list mt-16"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modale de saisie rapide -->
+    <div id="input-modal" class="modal-backdrop hidden">
+      <div class="modal-card input-modal-card">
+        <div class="modal-header">
+          <h2 id="input-modal-title">Saisie</h2>
+          <button
+            id="btn-cancel-input-modal"
+            class="btn-secondary"
+            type="button"
+          >
+            ✕
+          </button>
+        </div>
+        <form id="input-modal-form" class="modal-panel active">
+          <label id="input-modal-label-1" class="field">
+            <span>Nom</span>
+            <input id="input-modal-field-1" type="text" />
+          </label>
+          <label id="input-modal-label-2" class="field hidden">
+            <span>URL</span>
+            <input id="input-modal-field-2" type="text" />
+          </label>
+          <label id="input-modal-label-3" class="field hidden">
+            <span>Icône</span>
+            <input id="input-modal-field-3" type="text" />
+          </label>
+          <div class="input-modal-actions">
+            <button
+              id="btn-input-cancel-secondary"
+              class="btn-secondary"
+              type="button"
+            >
+              Annuler
+            </button>
+            <button type="submit" class="btn-primary">Valider</button>
+          </div>
         </form>
       </div>
-    </section>
-
-    <div id="web-view-frame" class="web-view-frame hidden"></div>
-  </main>
-
-  <!-- Menu contextuel -->
-  <div id="context-menu" class="context-menu hidden" role="menu">
-    <button id="ctx-open-new-tab" class="context-menu-item is-highlighted" type="button">Ouvrir dans un nouvel onglet</button>
-    <button id="ctx-copy-link" class="context-menu-item" type="button">Copier le lien</button>
-    <button id="ctx-add-bookmark" class="context-menu-item" type="button">Ajouter aux favoris</button>
-    <button id="ctx-close-view" class="context-menu-item" type="button">Clore la vue (couper son / RAM)</button>
-  </div>
-
-  <!-- Modale Paramètres -->
-  <div id="settings-modal" class="modal-backdrop hidden">
-    <div class="modal-card">
-      <div class="modal-header">
-        <h2>Paramètres · Katyn Oracle</h2>
-        <button id="btn-close-settings" class="btn-secondary" type="button">✕</button>
-      </div>
-
-      <div class="modal-tabs">
-        <button class="modal-tab active" data-tab="general" type="button">Général</button>
-        <button class="modal-tab" data-tab="profiles" type="button">Profils</button>
-        <button class="modal-tab" data-tab="spaces" type="button">Espaces</button>
-        <button class="modal-tab" data-tab="pins" type="button">Épinglés</button>
-        <button class="modal-tab" data-tab="extensions" type="button">Extensions</button>
-      </div>
-
-      <div id="tab-general" class="modal-panel active">
-        <label class="field">
-          <span>Moteur de recherche</span>
-          <select id="setting-search-engine">
-            <option value="google">Google (Par défaut)</option>
-            <option value="brave">Brave Search</option>
-            <option value="bing">Bing</option>
-            <option value="startpage">Startpage</option>
-          </select>
-        </label>
-
-        <label class="field">
-          <span>Page d'accueil</span>
-          <input id="setting-home-url" type="text" placeholder="katyn://accueil ou https://..." />
-        </label>
-
-        <label class="field">
-          <span>Largeur de la barre latérale (px)</span>
-          <input id="setting-sidebar-width" type="number" min="200" max="420" step="10" />
-        </label>
-
-        <div class="modal-actions">
-          <button id="btn-save-general" class="btn-primary" type="button">Enregistrer</button>
-        </div>
-      </div>
-
-      <div id="tab-profiles" class="modal-panel">
-        <div id="profiles-list" class="config-list"></div>
-        <div class="inline-form mt-16">
-          <input id="new-profile-name" type="text" placeholder="Nom du profil" />
-          <input id="new-profile-color" type="color" value="#B8B4F8" />
-          <button id="btn-add-profile" class="btn-primary" type="button">Ajouter</button>
-        </div>
-      </div>
-
-      <div id="tab-spaces" class="modal-panel">
-        <div id="spaces-config-list" class="config-list"></div>
-        <div class="inline-form mt-16">
-          <input id="new-space-name" type="text" placeholder="Nom de l'espace" />
-          <select id="new-space-profile"></select>
-          <input id="new-space-color" type="color" value="#8FE3DC" />
-          <button id="btn-add-space" class="btn-primary" type="button">Créer</button>
-        </div>
-      </div>
-
-      <div id="tab-pins" class="modal-panel">
-        <div id="pins-config-list" class="config-list"></div>
-        <div class="inline-form mt-16">
-          <input id="new-pin-icon" class="input-icon" type="text" placeholder="◆" maxlength="4" />
-          <input id="new-pin-title" type="text" placeholder="Titre" />
-          <input id="new-pin-url" type="text" placeholder="https://..." />
-          <button id="btn-add-pin" class="btn-primary" type="button">Ajouter</button>
-        </div>
-      </div>
-
-      <div id="tab-extensions" class="modal-panel">
-        <p class="helper-text">
-          Sélectionne un dossier d'extension non empaqueté contenant un <code>manifest.json</code>.
-        </p>
-        <div class="inline-form">
-          <input id="new-ext-path" type="text" placeholder="C:\chemin\vers\extension" />
-          <button id="btn-browse-ext" class="btn-secondary" type="button">Parcourir...</button>
-          <button id="btn-add-ext" class="btn-primary" type="button">Ajouter</button>
-        </div>
-        <p id="ext-error-msg" class="error-text hidden"></p>
-        <div id="extensions-config-list" class="config-list mt-16"></div>
-      </div>
     </div>
-  </div>
 
-  <!-- Modale de saisie rapide -->
-  <div id="input-modal" class="modal-backdrop hidden">
-    <div class="modal-card input-modal-card">
-      <div class="modal-header">
-        <h2 id="input-modal-title">Saisie</h2>
-        <button id="btn-cancel-input-modal" class="btn-secondary" type="button">✕</button>
-      </div>
-      <form id="input-modal-form" class="modal-panel active">
-        <label id="input-modal-label-1" class="field">
-          <span>Nom</span>
-          <input id="input-modal-field-1" type="text" />
-        </label>
-        <label id="input-modal-label-2" class="field hidden">
-          <span>URL</span>
-          <input id="input-modal-field-2" type="text" />
-        </label>
-        <label id="input-modal-label-3" class="field hidden">
-          <span>Icône</span>
-          <input id="input-modal-field-3" type="text" />
-        </label>
-        <div class="input-modal-actions">
-          <button id="btn-input-cancel-secondary" class="btn-secondary" type="button">Annuler</button>
-          <button type="submit" class="btn-primary">Valider</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <script src="renderer.js"></script>
-</body>
+    <script src="renderer.js"></script>
+  </body>
 </html>
